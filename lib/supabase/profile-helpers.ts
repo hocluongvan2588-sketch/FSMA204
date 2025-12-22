@@ -54,7 +54,6 @@ export async function ensureProfileExists(user: User) {
     full_name: user.user_metadata?.full_name || user.email || "User",
     role: user.user_metadata?.role || "viewer",
     language_preference: user.user_metadata?.language_preference || "vi",
-    email: user.email,
   }
 
   console.log("[v0] Attempting to insert profile:", newProfile)

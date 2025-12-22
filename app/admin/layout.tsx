@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { AdminNav } from "@/components/admin-nav"
 import { LanguageProvider } from "@/contexts/language-context"
+import { canAccessAdminPanel } from "@/lib/auth/roles"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -15,10 +16,21 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/auth/login")
   }
 
-  // Check if user is admin
-  const { data: profile } = await supabase.from("profiles").select("role, full_name, email").eq("id", user.id).single()
+  const { data: profile, error: profileError } = await supabase.from("profiles").select("*").eq("id", user.id).single()
 
-  if (!profile || profile.role !== "admin") {
+  console.log("[v0] Admin Layout - User ID:", user.id)
+  console.log("[v0] Admin Layout - Profile:", profile)
+  console.log("[v0] Admin Layout - Profile Error:", profileError)
+  console.log("[v0] Admin Layout - Role:", profile?.role)
+  console.log("[v0] Admin Layout - Can Access:", profile ? canAccessAdminPanel(profile.role) : false)
+
+  if (!profile) {
+    console.log("[v0] Admin Layout - No profile found, redirecting to dashboard")
+    redirect("/dashboard")
+  }
+
+  if (!canAccessAdminPanel(profile.role)) {
+    console.log("[v0] Admin Layout - No admin access, redirecting to dashboard")
     redirect("/dashboard")
   }
 

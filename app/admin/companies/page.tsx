@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { useLanguage } from "@/contexts/language-context"
 import { Building2, Users } from "lucide-react"
+import { isSystemAdmin } from "@/lib/auth/roles"
 
 interface Company {
   id: string
@@ -25,20 +26,45 @@ export default function AdminCompaniesPage() {
   const { language } = useLanguage()
   const [companies, setCompanies] = useState<Company[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
 
   useEffect(() => {
+    loadCurrentUser()
     loadCompanies()
   }, [])
+
+  const loadCurrentUser = async () => {
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("role, company_id").eq("id", user.id).single()
+      setCurrentUserProfile(profile)
+    }
+  }
 
   const loadCompanies = async () => {
     setIsLoading(true)
     const supabase = createClient()
 
     try {
-      const { data: companiesData } = await supabase
-        .from("companies")
-        .select("*")
-        .order("created_at", { ascending: false })
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      const { data: currentProfile } = await supabase
+        .from("profiles")
+        .select("role, company_id")
+        .eq("id", user?.id)
+        .single()
+
+      let companiesQuery = supabase.from("companies").select("*").order("created_at", { ascending: false })
+
+      if (currentProfile && !isSystemAdmin(currentProfile.role)) {
+        companiesQuery = companiesQuery.eq("id", currentProfile.company_id)
+      }
+
+      const { data: companiesData } = await companiesQuery
 
       if (companiesData) {
         // Load counts for each company
@@ -82,12 +108,33 @@ export default function AdminCompaniesPage() {
         <div>
           <h1 className="text-3xl font-bold">{language === "vi" ? "Quản lý công ty" : "Company Management"}</h1>
           <p className="text-muted-foreground mt-1">
-            {language === "vi"
-              ? "Xem và quản lý tất cả các công ty trong hệ thống"
-              : "View and manage all companies in the system"}
+            {currentUserProfile && isSystemAdmin(currentUserProfile.role)
+              ? language === "vi"
+                ? "Xem và quản lý tất cả các công ty trong hệ thống"
+                : "View and manage all companies in the system"
+              : language === "vi"
+                ? "Xem và quản lý công ty của bạn"
+                : "View and manage your company"}
           </p>
         </div>
       </div>
+
+      {currentUserProfile && isSystemAdmin(currentUserProfile.role) && (
+        <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-3 rounded-lg flex items-start gap-3">
+          <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div>
+            <p className="font-semibold">Chế độ System Admin</p>
+            <p className="text-sm">Bạn đang xem tất cả các công ty trong hệ thống.</p>
+          </div>
+        </div>
+      )}
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

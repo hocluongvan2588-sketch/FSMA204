@@ -15,8 +15,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect("/auth/login")
   }
 
-  // Get user profile
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
+  const { data: profile, error: profileError } = await supabase.from("profiles").select("*").eq("id", user.id).single()
+
+  console.log("[v0] Dashboard Layout - User ID:", user.id)
+  console.log("[v0] Dashboard Layout - Profile:", profile)
+  console.log("[v0] Dashboard Layout - Role:", profile?.role)
+
+  if (profile?.role === "system_admin") {
+    console.log("[v0] Dashboard Layout - Redirecting system_admin to /admin")
+    redirect("/admin")
+  }
 
   return (
     <LanguageProvider>

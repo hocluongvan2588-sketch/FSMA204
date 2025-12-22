@@ -16,6 +16,8 @@ export default async function CompanyPage() {
 
   const hasCompany = profile?.company_id && profile?.companies
 
+  const canEdit = profile?.role === "system_admin" || profile?.role === "admin" || profile?.role === "manager"
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -23,7 +25,7 @@ export default async function CompanyPage() {
           <h1 className="text-3xl font-bold text-slate-900">Thông tin công ty</h1>
           <p className="text-slate-500 mt-1">Quản lý thông tin doanh nghiệp của bạn</p>
         </div>
-        {hasCompany && (profile?.role === "admin" || profile?.role === "manager") && (
+        {hasCompany && canEdit && (
           <Button asChild>
             <Link href="/dashboard/company/edit">Chỉnh sửa</Link>
           </Button>

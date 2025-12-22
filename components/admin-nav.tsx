@@ -10,6 +10,7 @@ import { useLanguage } from "@/contexts/language-context"
 import { LanguageSwitcher } from "@/components/language-switcher"
 import { LayoutDashboard, Users, Building2, FileText, Shield, LogOut, ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { getRoleDisplayName, isSystemAdmin } from "@/lib/auth/roles"
 
 interface AdminNavProps {
   user: User
@@ -45,13 +46,13 @@ export function AdminNav({ user, profile }: AdminNavProps) {
       name: language === "vi" ? "Công ty" : "Companies",
       href: "/admin/companies",
       icon: Building2,
-      description: language === "vi" ? "Tổ chức trong hệ thống" : "Organizations",
+      description: language === "vi" ? "Tổ chức" : "Organizations",
     },
     {
       name: language === "vi" ? "Nhật ký hệ thống" : "System Logs",
       href: "/admin/system-logs",
       icon: FileText,
-      description: language === "vi" ? "Audit trail" : "Audit trail",
+      description: language === "vi" ? "Nhật ký kiểm toán" : "Audit trail",
     },
   ]
 
@@ -60,23 +61,41 @@ export function AdminNav({ user, profile }: AdminNavProps) {
       {/* Header */}
       <div className="p-6 border-b">
         <div className="flex items-center gap-3 mb-4">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-red-600 to-orange-600 flex items-center justify-center shadow-md">
+          <div
+            className={cn(
+              "h-10 w-10 rounded-xl flex items-center justify-center shadow-md",
+              isSystemAdmin(profile?.role)
+                ? "bg-gradient-to-br from-purple-600 to-pink-600"
+                : "bg-gradient-to-br from-red-600 to-orange-600",
+            )}
+          >
             <Shield className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-lg">Admin Panel</h2>
-            <p className="text-xs text-slate-500">System Management</p>
+            <h2 className="font-bold text-lg">{language === "vi" ? "Quản trị" : "Admin Panel"}</h2>
+            <p className="text-xs text-slate-500">
+              {isSystemAdmin(profile?.role)
+                ? language === "vi"
+                  ? "Quản lý hệ thống"
+                  : "System Management"
+                : language === "vi"
+                  ? "Quản lý công ty"
+                  : "Company Management"}
+            </p>
           </div>
         </div>
-        <Badge variant="destructive" className="w-full justify-center">
-          Administrator
+        <Badge
+          variant={isSystemAdmin(profile?.role) ? "default" : "destructive"}
+          className={cn("w-full justify-center", isSystemAdmin(profile?.role) && "bg-purple-600")}
+        >
+          {getRoleDisplayName(profile?.role, language)}
         </Badge>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
         <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-          {language === "vi" ? "Quản trị" : "Administration"}
+          {language === "vi" ? "QUẢN TRỊ" : "ADMINISTRATION"}
         </p>
         {navigation.map((item) => {
           const isActive = pathname === item.href
@@ -103,14 +122,14 @@ export function AdminNav({ user, profile }: AdminNavProps) {
 
         <div className="pt-6">
           <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            {language === "vi" ? "Khác" : "Other"}
+            {language === "vi" ? "KHÁC" : "OTHER"}
           </p>
           <Link
             href="/dashboard"
             className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <ArrowLeft className="h-5 w-5 text-slate-500" />
-            <span>{language === "vi" ? "Về Dashboard" : "Back to Dashboard"}</span>
+            <span>{language === "vi" ? "Quay về Dashboard" : "Back to Dashboard"}</span>
           </Link>
         </div>
       </nav>
@@ -120,8 +139,15 @@ export function AdminNav({ user, profile }: AdminNavProps) {
         <LanguageSwitcher />
 
         <div className="rounded-lg bg-slate-50 p-3 border">
-          <p className="text-sm font-medium text-slate-900 truncate">{profile?.full_name || "Administrator"}</p>
+          <p className="text-sm font-medium text-slate-900 truncate">
+            {profile?.full_name || (language === "vi" ? "Quản trị viên" : "Administrator")}
+          </p>
           <p className="text-xs text-slate-500 truncate">{profile?.email || user.email}</p>
+          {isSystemAdmin(profile?.role) && (
+            <p className="text-xs text-purple-600 font-semibold mt-1">
+              {language === "vi" ? "Không thuộc công ty (Toàn hệ thống)" : "No Company (System-wide)"}
+            </p>
+          )}
         </div>
 
         <Button variant="outline" className="w-full bg-transparent" onClick={handleSignOut}>

@@ -61,8 +61,30 @@ export default function SystemLogsPage() {
   const [dateFilter, setDateFilter] = useState<string>("7days")
 
   useEffect(() => {
-    loadSystemLogs()
+    checkAdminAccess()
   }, [dateFilter])
+
+  const checkAdminAccess = async () => {
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      window.location.href = "/auth/login"
+      return
+    }
+
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+
+    if (!profile || !["admin", "system_admin"].includes(profile.role)) {
+      console.log("[v0] Access denied. User role:", profile?.role)
+      window.location.href = "/dashboard"
+      return
+    }
+
+    loadSystemLogs()
+  }
 
   const loadSystemLogs = async () => {
     setIsLoading(true)

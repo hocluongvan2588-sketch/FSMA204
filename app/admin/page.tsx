@@ -1,320 +1,449 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Users, Building2, Activity, Shield, Database, CheckCircle2 } from "lucide-react"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useLanguage } from "@/contexts/language-context"
-import { UserRole, getRoleDisplayName, isSystemAdmin } from "@/lib/auth/roles"
-import { createUser } from "@/app/actions/admin-users"
 
-interface Profile {
-  id: string
-  full_name: string
-  role: string
-  email?: string
-  phone: string | null
-  created_at: string
+interface SystemStats {
+  totalUsers: number
+  totalCompanies: number
+  totalFacilities: number
+  systemAdmins: number
+  companyAdmins: number
+  activeUsers: number
+  totalSystemLogs: number
 }
 
-export default function AdminUsersPage() {
-  const { t, language } = useLanguage()
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [companies, setCompanies] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [showCreateForm, setShowCreateForm] = useState(false)
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
+interface RecentUser {
+  id: string
+  full_name: string
+  email: string
+  role: string
+  created_at: string
+  company_id: string | null
+  companies?: { name: string } | null
+}
 
-  // Form state
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [fullName, setFullName] = useState("")
-  const [role, setRole] = useState("viewer")
-  const [companyId, setCompanyId] = useState("")
-  const [phone, setPhone] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
+export default function AdminDashboardPage() {
+  const { language } = useLanguage()
+  const [stats, setStats] = useState<SystemStats>({
+    totalUsers: 0,
+    totalCompanies: 0,
+    totalFacilities: 0,
+    systemAdmins: 0,
+    companyAdmins: 0,
+    activeUsers: 0,
+    totalSystemLogs: 0,
+  })
+  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [userRole, setUserRole] = useState<string>("")
+  const [currentUser, setCurrentUser] = useState<{ email: string; companyName: string | null }>({
+    email: "",
+    companyName: null,
+  })
 
   useEffect(() => {
-    loadData()
-    loadCurrentUser()
+    loadSystemData()
   }, [])
 
-  const loadCurrentUser = async () => {
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("role, company_id").eq("id", user.id).single()
-      setCurrentUserProfile(profile)
-    }
-  }
-
-  const loadData = async () => {
-    const supabase = createClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    const { data: currentProfile } = await supabase
-      .from("profiles")
-      .select("role, company_id")
-      .eq("id", user?.id)
-      .single()
-
-    let profilesQuery = supabase.from("profiles").select("*").order("created_at", { ascending: false })
-
-    if (currentProfile && !isSystemAdmin(currentProfile.role)) {
-      // Regular admin only sees users from their company
-      profilesQuery = profilesQuery.eq("company_id", currentProfile.company_id)
-    }
-
-    const { data: profilesData } = await profilesQuery
-
-    if (profilesData) setProfiles(profilesData)
-
-    // Load companies
-    const { data: companiesData } = await supabase.from("companies").select("id, name").order("name")
-
-    if (companiesData) setCompanies(companiesData)
-  }
-
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const loadSystemData = async () => {
     setIsLoading(true)
-    setError(null)
-    setSuccess(null)
+    const supabase = createClient()
 
     try {
-      const result = await createUser({
-        email,
-        password,
-        fullName,
-        role,
-        companyId: companyId === "none" ? undefined : companyId,
-        phone,
-      })
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-      if (result.error) {
-        setError(result.error)
+      if (!user) {
+        console.error("[v0] No user found in admin page")
         return
       }
 
-      setSuccess("Tạo tài khoản thành công!")
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, company_id, companies(name)")
+        .eq("id", user.id)
+        .single()
 
-      // Reset form
-      setEmail("")
-      setPassword("")
-      setFullName("")
-      setRole("viewer")
-      setCompanyId("")
-      setPhone("")
-      setShowCreateForm(false)
+      if (!profile) {
+        console.error("[v0] No profile found")
+        return
+      }
 
-      // Reload data
-      loadData()
-    } catch (err: any) {
-      setError(err.message || "Có lỗi xảy ra khi tạo tài khoản")
+      setUserRole(profile.role)
+      setCurrentUser({
+        email: user.email || "",
+        companyName: profile.companies?.name || null,
+      })
+      console.log("[v0] Admin page loaded with role:", profile.role, "email:", user.email)
+
+      // Load statistics
+      const [usersData, companiesData, facilitiesData, systemAdminsData, companyAdminsData, systemLogsData] =
+        await Promise.all([
+          supabase.from("profiles").select("id", { count: "exact", head: true }),
+          supabase.from("companies").select("id", { count: "exact", head: true }),
+          supabase.from("facilities").select("id", { count: "exact", head: true }),
+          supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "system_admin"),
+          supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "admin"),
+          supabase.from("system_logs").select("id", { count: "exact", head: true }),
+        ])
+
+      setStats({
+        totalUsers: usersData.count || 0,
+        totalCompanies: companiesData.count || 0,
+        totalFacilities: facilitiesData.count || 0,
+        systemAdmins: systemAdminsData.count || 0,
+        companyAdmins: companyAdminsData.count || 0,
+        activeUsers: usersData.count || 0,
+        totalSystemLogs: systemLogsData.count || 0,
+      })
+
+      // Load recent users
+      let recentUsersQuery = supabase
+        .from("profiles")
+        .select(
+          `
+          id,
+          full_name,
+          email,
+          role,
+          created_at,
+          company_id,
+          companies (name)
+        `,
+        )
+        .order("created_at", { ascending: false })
+        .limit(5)
+
+      // If company admin, only show users from their company
+      if (profile.role === "admin" && profile.company_id) {
+        recentUsersQuery = recentUsersQuery.eq("company_id", profile.company_id)
+      }
+
+      const { data: usersListData } = await recentUsersQuery
+
+      setRecentUsers(usersListData || [])
+      console.log("[v0] Admin data loaded successfully")
+    } catch (error) {
+      console.error("[v0] Error loading admin data:", error)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const getRoleBadge = (role: string) => {
+  const isSystemAdmin = userRole === "system_admin"
+
+  const statCards = [
+    {
+      title: language === "vi" ? "Tổng người dùng" : "Total Users",
+      value: stats.totalUsers,
+      icon: Users,
+      color: "text-blue-600",
+      bgColor: "bg-blue-50",
+      link: "/admin/users",
+      description: language === "vi" ? "Tài khoản trong hệ thống" : "Accounts in system",
+    },
+    {
+      title: language === "vi" ? "Công ty" : "Companies",
+      value: stats.totalCompanies,
+      icon: Building2,
+      color: "text-green-600",
+      bgColor: "bg-green-50",
+      link: "/admin/companies",
+      description: language === "vi" ? "Tổ chức đăng ký" : "Registered organizations",
+      systemAdminOnly: true,
+    },
+    {
+      title: language === "vi" ? "Quản trị viên" : "Administrators",
+      value: stats.companyAdmins + stats.systemAdmins,
+      icon: Shield,
+      color: "text-purple-600",
+      bgColor: "bg-purple-50",
+      description: language === "vi" ? `${stats.systemAdmins} hệ thống` : `${stats.systemAdmins} system`,
+    },
+    {
+      title: language === "vi" ? "Nhật ký hệ thống" : "System Logs",
+      value: stats.totalSystemLogs,
+      icon: Activity,
+      color: "text-orange-600",
+      bgColor: "bg-orange-50",
+      link: "/admin/system-logs",
+      description: language === "vi" ? "Sự kiện ghi nhận" : "Recorded events",
+    },
+  ]
+
+  const getRoleBadgeColor = (role: string) => {
     const colors: Record<string, string> = {
-      system_admin: "bg-purple-100 text-purple-700 border-purple-300",
-      admin: "bg-red-100 text-red-700",
-      manager: "bg-blue-100 text-blue-700",
-      operator: "bg-green-100 text-green-700",
-      viewer: "bg-gray-100 text-gray-700",
+      system_admin: "bg-purple-100 text-purple-700 border-purple-200",
+      admin: "bg-red-100 text-red-700 border-red-200",
+      manager: "bg-blue-100 text-blue-700 border-blue-200",
+      operator: "bg-green-100 text-green-700 border-green-200",
+      viewer: "bg-slate-100 text-slate-700 border-slate-200",
     }
-    return colors[role] || colors.viewer
+    return colors[role] || "bg-slate-100 text-slate-700"
+  }
+
+  const getRoleDisplayName = (role: string) => {
+    if (language === "vi") {
+      const names: Record<string, string> = {
+        system_admin: "System Admin",
+        admin: "Admin",
+        manager: "Quản lý",
+        operator: "Nhân viên",
+        viewer: "Người xem",
+      }
+      return names[role] || role
+    }
+    return role.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[80vh]">
+        <div className="text-center space-y-4">
+          <div className="h-16 w-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto animate-pulse">
+            <Database className="h-8 w-8 text-purple-600" />
+          </div>
+          <p className="text-lg font-medium">{language === "vi" ? "Đang tải dữ liệu..." : "Loading data..."}</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Quản lý người dùng</h1>
-          <p className="text-muted-foreground mt-1">
-            {currentUserProfile && isSystemAdmin(currentUserProfile.role)
-              ? "Tạo và quản lý tất cả tài khoản người dùng trong hệ thống"
-              : "Tạo và quản lý tài khoản người dùng trong công ty của bạn"}
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-4xl font-bold text-slate-900">
+              {language === "vi" ? "Bảng điều khiển quản trị" : "Administration Dashboard"}
+            </h1>
+            <Badge className={isSystemAdmin ? "bg-purple-600" : "bg-red-600"}>
+              {isSystemAdmin ? (language === "vi" ? "HỆ THỐNG" : "SYSTEM") : language === "vi" ? "CÔNG TY" : "COMPANY"}
+            </Badge>
+          </div>
+          <p className="text-slate-500 text-lg">
+            {isSystemAdmin
+              ? language === "vi"
+                ? "Quản lý toàn bộ hệ thống và tổ chức"
+                : "Manage entire system and organizations"
+              : language === "vi"
+                ? "Quản lý người dùng và cài đặt công ty"
+                : "Manage users and company settings"}
           </p>
+          <div className="mt-2 flex items-center gap-4 text-sm text-slate-600">
+            {currentUser.email && (
+              <span className="flex items-center gap-1">
+                <Users className="h-4 w-4" />
+                {currentUser.email}
+              </span>
+            )}
+            {currentUser.companyName && (
+              <span className="flex items-center gap-1">
+                <Building2 className="h-4 w-4" />
+                {currentUser.companyName}
+              </span>
+            )}
+            {!currentUser.companyName && !isSystemAdmin && (
+              <span className="flex items-center gap-1 text-orange-600">
+                <Building2 className="h-4 w-4" />
+                {language === "vi" ? "Chưa có công ty" : "No company assigned"}
+              </span>
+            )}
+          </div>
         </div>
-        <Button onClick={() => setShowCreateForm(!showCreateForm)}>
-          {showCreateForm ? "Hủy" : "+ Tạo người dùng mới"}
+        <Button onClick={loadSystemData} variant="outline" className="bg-transparent">
+          <Activity className="h-4 w-4 mr-2" />
+          {language === "vi" ? "Làm mới" : "Refresh"}
         </Button>
       </div>
 
-      {currentUserProfile && isSystemAdmin(currentUserProfile.role) && (
-        <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-3 rounded-lg flex items-start gap-3">
-          <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <p className="font-semibold">Bạn đang ở chế độ System Admin</p>
-            <p className="text-sm">Bạn có thể xem và quản lý tất cả người dùng từ tất cả các công ty trong hệ thống.</p>
-          </div>
-        </div>
-      )}
-
-      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{error}</div>}
-
-      {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">{success}</div>}
-
-      {showCreateForm && (
-        <Card>
+      {/* System Health - Only for System Admin */}
+      {isSystemAdmin && (
+        <Card className="border-l-4 border-l-green-500">
           <CardHeader>
-            <CardTitle>Tạo tài khoản người dùng mới</CardTitle>
-            <CardDescription>Điền thông tin để tạo tài khoản cho nhân viên</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              {language === "vi" ? "Trạng thái hệ thống" : "System Health"}
+            </CardTitle>
+            <CardDescription>
+              {language === "vi" ? "Tất cả dịch vụ hoạt động bình thường" : "All services operational"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleCreateUser} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="user@example.com"
-                  />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-200">
+                <div className="flex items-center gap-3">
+                  <Database className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="font-medium text-slate-900">{language === "vi" ? "Cơ sở dữ liệu" : "Database"}</p>
+                    <p className="text-sm text-slate-600">Supabase PostgreSQL</p>
+                  </div>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password">Mật khẩu *</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Tối thiểu 6 ký tự"
-                    minLength={6}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Họ và tên *</Label>
-                  <Input
-                    id="fullName"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Nguyễn Văn A"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Số điện thoại</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+84 xxx xxx xxx"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="role">Vai trò *</Label>
-                  <Select value={role} onValueChange={setRole}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currentUserProfile && isSystemAdmin(currentUserProfile.role) && (
-                        <SelectItem value={UserRole.SYSTEM_ADMIN}>
-                          {getRoleDisplayName(UserRole.SYSTEM_ADMIN, language)} - Toàn quyền hệ thống
-                        </SelectItem>
-                      )}
-                      <SelectItem value={UserRole.ADMIN}>
-                        {getRoleDisplayName(UserRole.ADMIN, language)} - Quản trị công ty
-                      </SelectItem>
-                      <SelectItem value={UserRole.MANAGER}>
-                        {getRoleDisplayName(UserRole.MANAGER, language)} - Quản lý cơ sở
-                      </SelectItem>
-                      <SelectItem value={UserRole.OPERATOR}>
-                        {getRoleDisplayName(UserRole.OPERATOR, language)} - Nhân viên vận hành
-                      </SelectItem>
-                      <SelectItem value={UserRole.VIEWER}>
-                        {getRoleDisplayName(UserRole.VIEWER, language)} - Chỉ xem
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="company">Công ty</Label>
-                  <Select value={companyId} onValueChange={setCompanyId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn công ty (tùy chọn)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currentUserProfile && isSystemAdmin(currentUserProfile.role) && (
-                        <SelectItem value="none">Không gán công ty (System Admin only)</SelectItem>
-                      )}
-                      {companies.map((company) => (
-                        <SelectItem key={company.id} value={company.id}>
-                          {company.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Badge className="bg-green-600">{language === "vi" ? "Hoạt động" : "Online"}</Badge>
               </div>
-
-              <Button type="submit" disabled={isLoading} className="w-full">
-                {isLoading ? "Đang tạo..." : "Tạo tài khoản"}
-              </Button>
-            </form>
+              <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-200">
+                <div className="flex items-center gap-3">
+                  <Activity className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="font-medium text-slate-900">{language === "vi" ? "Dịch vụ API" : "API Service"}</p>
+                    <p className="text-sm text-slate-600">Next.js Server</p>
+                  </div>
+                </div>
+                <Badge className="bg-green-600">{language === "vi" ? "Hoạt động" : "Online"}</Badge>
+              </div>
+              <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-200">
+                <div className="flex items-center gap-3">
+                  <Shield className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="font-medium text-slate-900">{language === "vi" ? "Xác thực" : "Authentication"}</p>
+                    <p className="text-sm text-slate-600">Supabase Auth</p>
+                  </div>
+                </div>
+                <Badge className="bg-green-600">{language === "vi" ? "Hoạt động" : "Online"}</Badge>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
 
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {statCards
+          .filter((stat) => !stat.systemAdminOnly || isSystemAdmin)
+          .map((stat, index) => (
+            <Card key={index} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-slate-600">{stat.title}</CardTitle>
+                <div className={`p-3 rounded-xl ${stat.bgColor}`}>
+                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="text-3xl font-bold text-slate-900">{stat.value.toLocaleString()}</div>
+                  <p className="text-xs text-slate-500">{stat.description}</p>
+                  {stat.link && (
+                    <Link href={stat.link}>
+                      <Button variant="link" className="p-0 h-auto text-blue-600 hover:text-blue-700">
+                        {language === "vi" ? "Xem chi tiết" : "View details"} →
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+      </div>
+
+      {/* Recent Users */}
       <Card>
         <CardHeader>
-          <CardTitle>Danh sách người dùng ({profiles.length})</CardTitle>
+          <CardTitle>{language === "vi" ? "Người dùng mới nhất" : "Recent Users"}</CardTitle>
+          <CardDescription>
+            {language === "vi" ? "Tài khoản đăng ký gần đây" : "Recently registered accounts"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Họ tên</TableHead>
-                <TableHead>Vai trò</TableHead>
-                <TableHead>Số điện thoại</TableHead>
-                <TableHead>Ngày tạo</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {profiles.map((profile) => (
-                <TableRow key={profile.id}>
-                  <TableCell className="font-medium">{profile.full_name}</TableCell>
-                  <TableCell>
-                    <Badge className={getRoleBadge(profile.role)}>{getRoleDisplayName(profile.role, language)}</Badge>
-                  </TableCell>
-                  <TableCell>{profile.phone || "-"}</TableCell>
-                  <TableCell>{new Date(profile.created_at).toLocaleDateString("vi-VN")}</TableCell>
-                </TableRow>
+          {recentUsers.length === 0 ? (
+            <div className="text-center py-12 space-y-4">
+              <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto">
+                <Users className="h-8 w-8 text-slate-400" />
+              </div>
+              <p className="text-slate-600">{language === "vi" ? "Chưa có người dùng" : "No users yet"}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between p-4 rounded-lg border bg-slate-50 hover:bg-slate-100 transition-colors"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-600 to-teal-600 flex items-center justify-center text-white font-semibold text-lg">
+                      {user.full_name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || "U"}
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900">{user.full_name || user.email || "N/A"}</p>
+                      <p className="text-sm text-slate-600">{user.email}</p>
+                      {user.companies?.name && <p className="text-xs text-slate-500 mt-1">{user.companies.name}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge className={getRoleBadgeColor(user.role)}>{getRoleDisplayName(user.role)}</Badge>
+                    <p className="text-xs text-slate-500">{new Date(user.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+          )}
+          <div className="mt-4 pt-4 border-t">
+            <Link href="/admin/users">
+              <Button variant="outline" className="w-full bg-transparent">
+                <Users className="h-4 w-4 mr-2" />
+                {language === "vi" ? "Xem tất cả người dùng" : "View all users"}
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quick Actions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{language === "vi" ? "Thao tác nhanh" : "Quick Actions"}</CardTitle>
+          <CardDescription>
+            {language === "vi" ? "Các chức năng quản trị chính" : "Primary admin functions"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Link href="/admin/users">
+              <Button variant="outline" className="w-full h-auto py-6 flex flex-col items-start gap-2 bg-transparent">
+                <Users className="h-6 w-6 text-blue-600" />
+                <div className="text-left">
+                  <div className="font-semibold">{language === "vi" ? "Quản lý người dùng" : "Manage Users"}</div>
+                  <div className="text-xs text-slate-500">
+                    {language === "vi" ? "Thêm, sửa, xóa tài khoản" : "Add, edit, remove accounts"}
+                  </div>
+                </div>
+              </Button>
+            </Link>
+
+            {isSystemAdmin && (
+              <Link href="/admin/companies">
+                <Button variant="outline" className="w-full h-auto py-6 flex flex-col items-start gap-2 bg-transparent">
+                  <Building2 className="h-6 w-6 text-green-600" />
+                  <div className="text-left">
+                    <div className="font-semibold">{language === "vi" ? "Quản lý công ty" : "Manage Companies"}</div>
+                    <div className="text-xs text-slate-500">
+                      {language === "vi" ? "Xem và chỉnh sửa tổ chức" : "View and edit organizations"}
+                    </div>
+                  </div>
+                </Button>
+              </Link>
+            )}
+
+            <Link href="/admin/system-logs">
+              <Button variant="outline" className="w-full h-auto py-6 flex flex-col items-start gap-2 bg-transparent">
+                <Activity className="h-6 w-6 text-orange-600" />
+                <div className="text-left">
+                  <div className="font-semibold">{language === "vi" ? "Xem nhật ký" : "View Logs"}</div>
+                  <div className="text-xs text-slate-500">
+                    {language === "vi" ? "Theo dõi hoạt động hệ thống" : "Track system activity"}
+                  </div>
+                </div>
+              </Button>
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

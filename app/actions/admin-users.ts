@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
+import { checkUserQuota } from "@/lib/quota"
+import { incrementUserCount, decrementUserCount } from "@/lib/usage-tracker"
 
 interface CreateUserInput {
   email: string
@@ -50,10 +52,28 @@ export async function createUser(input: CreateUserInput) {
       return { error: "Bạn không có quyền tạo người dùng" }
     }
 
+    if (currentProfile.role !== "system_admin" && input.companyId) {
+      const quotaCheck = await checkUserQuota(input.companyId)
+
+      if (!quotaCheck.allowed) {
+        if (quotaCheck.subscriptionStatus === "none") {
+          return { error: "Công ty chưa có gói dịch vụ. Vui lòng đăng ký gói dịch vụ trước." }
+        }
+        if (quotaCheck.maxAllowed === -1) {
+          return { error: "Gói dịch vụ không hoạt động." }
+        }
+        return {
+          error: `Đã đạt giới hạn người dùng (${quotaCheck.currentUsage}/${quotaCheck.maxAllowed}). Vui lòng nâng cấp gói dịch vụ.`,
+        }
+      }
+      console.log("[v0] Quota check passed:", quotaCheck)
+    }
+
     console.log("[v0] Creating admin client...")
     let adminClient
     try {
-      adminClient = await createAdminClient()
+      adminClient = createAdminClient()
+      console.log("[v0] Admin client created successfully")
     } catch (adminError: any) {
       console.error("[v0] Admin client creation failed:", adminError.message)
       return {
@@ -63,14 +83,14 @@ export async function createUser(input: CreateUserInput) {
       }
     }
 
-    // Create auth user using Admin API
-    console.log("[v0] Creating auth user...")
+    console.log("[v0] Creating auth user with metadata...")
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email: input.email,
       password: input.password,
       email_confirm: true,
       user_metadata: {
         full_name: input.fullName,
+        role: input.role,
       },
     })
 
@@ -85,22 +105,31 @@ export async function createUser(input: CreateUserInput) {
 
     console.log("[v0] Auth user created:", authData.user.id)
 
-    console.log("[v0] Creating profile...")
-    const { error: profileError } = await supabase.from("profiles").insert({
-      id: authData.user.id,
-      company_id: input.companyId || null,
-      full_name: input.fullName,
-      role: input.role,
-      phone: input.phone || null,
-    })
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    console.log("[v0] Updating profile with additional info...")
+    const { error: profileError } = await adminClient
+      .from("profiles")
+      .update({
+        company_id: input.companyId || null,
+        full_name: input.fullName,
+        role: input.role,
+        phone: input.phone || null,
+      })
+      .eq("id", authData.user.id)
 
     if (profileError) {
-      console.error("[v0] Profile creation error:", profileError)
-      // Rollback: delete auth user if profile creation fails
+      console.error("[v0] Profile update error:", profileError)
       await adminClient.auth.admin.deleteUser(authData.user.id)
-      return { error: `Lỗi tạo profile: ${profileError.message}` }
+      return { error: `Lỗi cập nhật profile: ${profileError.message}` }
     }
 
+    if (input.companyId) {
+      await incrementUserCount(input.companyId)
+      console.log("[v0] User count incremented for company:", input.companyId)
+    }
+
+    console.log("[v0] Profile updated successfully")
     revalidatePath("/admin/users")
     return { success: true, userId: authData.user.id }
   } catch (error: any) {
@@ -109,9 +138,9 @@ export async function createUser(input: CreateUserInput) {
   }
 }
 
-export async function createCompany(name: string, registrationNumber?: string) {
+export async function createCompany(input: { name: string; registrationNumber?: string }) {
   try {
-    console.log("[v0] Creating company:", name)
+    console.log("[v0] Creating company:", input.name)
 
     const supabase = await createClient()
 
@@ -132,8 +161,8 @@ export async function createCompany(name: string, registrationNumber?: string) {
     const { data, error } = await supabase
       .from("companies")
       .insert({
-        name,
-        registration_number: registrationNumber || null,
+        name: input.name,
+        registration_number: input.registrationNumber || null,
       })
       .select()
       .single()
@@ -149,6 +178,72 @@ export async function createCompany(name: string, registrationNumber?: string) {
     return { success: true, company: data }
   } catch (error: any) {
     console.error("[v0] Create company error:", error)
+    return { error: error.message || "Có lỗi xảy ra" }
+  }
+}
+
+export async function deleteUser(userId: string) {
+  try {
+    console.log("[v0] Deleting user:", userId)
+
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("[v0] SUPABASE_SERVICE_ROLE_KEY not found!")
+      return {
+        error:
+          "Service role key chưa được cấu hình. Vui lòng thêm SUPABASE_SERVICE_ROLE_KEY vào environment variables.",
+      }
+    }
+
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Không tìm thấy phiên đăng nhập" }
+    }
+
+    const { data: currentProfile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+
+    if (!currentProfile || (currentProfile.role !== "admin" && currentProfile.role !== "system_admin")) {
+      return { error: "Bạn không có quyền xóa người dùng" }
+    }
+
+    if (user.id === userId) {
+      return { error: "Bạn không thể xóa chính mình" }
+    }
+
+    const { data: userProfile } = await supabase.from("profiles").select("company_id").eq("id", userId).single()
+
+    console.log("[v0] Creating admin client for deletion...")
+    let adminClient
+    try {
+      adminClient = createAdminClient()
+    } catch (adminError: any) {
+      console.error("[v0] Admin client creation failed:", adminError.message)
+      return {
+        error: `Lỗi khởi tạo admin client: ${adminError.message}`,
+      }
+    }
+
+    const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(userId)
+
+    if (deleteAuthError) {
+      console.error("[v0] Auth deletion error:", deleteAuthError)
+      return { error: `Lỗi xóa tài khoản: ${deleteAuthError.message}` }
+    }
+
+    if (userProfile?.company_id) {
+      await decrementUserCount(userProfile.company_id)
+      console.log("[v0] User count decremented for company:", userProfile.company_id)
+    }
+
+    console.log("[v0] User deleted successfully")
+    revalidatePath("/admin/users")
+    return { success: true }
+  } catch (error: any) {
+    console.error("[v0] Delete user error:", error)
     return { error: error.message || "Có lỗi xảy ra" }
   }
 }

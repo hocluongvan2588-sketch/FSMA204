@@ -43,14 +43,14 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 - Badge màu đỏ đậm trong UI
 
 **Quyền hạn**:
-```
+\`\`\`
 ✅ Tất cả quyền của Admin
 ✅ Quản lý tất cả công ty trong hệ thống
 ✅ Xem và quản lý users của tất cả công ty
 ✅ Truy cập System Logs
 ✅ Xem Dashboard thống kê toàn hệ thống
 ✅ Cấu hình hệ thống
-```
+\`\`\`
 
 **Use cases**:
 - Nhà phát triển / vận hành hệ thống
@@ -70,7 +70,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 - Badge màu cam trong UI
 
 **Quyền hạn**:
-```
+\`\`\`
 ✅ Tất cả quyền của Manager
 ✅ Quản lý thông tin công ty của mình
 ✅ Tạo/sửa/xóa users trong công ty
@@ -78,7 +78,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 ✅ Quản lý cài đặt công ty
 ❌ Không xem được dữ liệu công ty khác
 ❌ Không truy cập System Logs
-```
+\`\`\`
 
 **Use cases**:
 - Giám đốc / Chủ doanh nghiệp
@@ -98,7 +98,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 - Badge màu vàng trong UI
 
 **Quyền hạn**:
-```
+\`\`\`
 ✅ Tất cả quyền của Operator
 ✅ Tạo/sửa/xóa Facilities (cơ sở)
 ✅ Tạo/sửa/xóa Products (sản phẩm)
@@ -106,7 +106,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 ✅ Quản lý Lots và CTEs
 ❌ Không quản lý users
 ❌ Không sửa thông tin công ty
-```
+\`\`\`
 
 **Use cases**:
 - Trưởng phòng sản xuất
@@ -126,7 +126,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 - Badge màu xanh dương trong UI
 
 **Quyền hạn**:
-```
+\`\`\`
 ✅ Tất cả quyền của Viewer
 ✅ Tạo/sửa Lots (lô hàng)
 ✅ Tạo/sửa CTEs (Critical Tracking Events)
@@ -134,7 +134,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 ✅ Tạo/sửa TLCs (Traceability Lot Codes)
 ❌ Không tạo facilities/products
 ❌ Không xem báo cáo tổng quan
-```
+\`\`\`
 
 **Use cases**:
 - Nhân viên nhập kho
@@ -154,7 +154,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 - Badge màu xanh lá trong UI
 
 **Quyền hạn**:
-```
+\`\`\`
 ✅ Xem thông tin công ty
 ✅ Xem danh sách facilities
 ✅ Xem danh sách products
@@ -162,7 +162,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 ✅ Xem TLCs
 ✅ Tìm kiếm và truy xuất nguồn gốc
 ❌ Không tạo/sửa/xóa bất kỳ dữ liệu nào
-```
+\`\`\`
 
 **Use cases**:
 - Khách hàng/đối tác xem dữ liệu
@@ -255,7 +255,7 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 
 ### File Structure
 
-```
+\`\`\`
 ├── lib/
 │   └── auth/
 │       ├── roles.ts              # Định nghĩa roles và hierarchy
@@ -278,13 +278,13 @@ Hệ thống sử dụng mô hình **Role-Based Access Control (RBAC)** với 5 
 └── components/
     ├── admin-nav.tsx             # Admin navigation với role badges
     └── dashboard-nav.tsx         # Main navigation với conditional admin link
-```
+\`\`\`
 
 ### Key Components
 
 #### 1. `lib/auth/roles.ts`
 Định nghĩa roles, hierarchy và các helper functions:
-```typescript
+\`\`\`typescript
 export enum UserRole {
   SYSTEM_ADMIN = "system_admin",
   ADMIN = "admin",
@@ -306,11 +306,11 @@ canManageFacilities(userRole)
 canManageProducts(userRole)
 canManageLots(userRole)
 getRoleDisplayName(role, language)
-```
+\`\`\`
 
 #### 2. `lib/auth/permissions.ts`
 Server và client-side permission utilities:
-```typescript
+\`\`\`typescript
 // Server-side
 await requireAdminAccess()          // Throw error if not admin/system_admin
 await requireSystemAdmin()          // Throw error if not system_admin
@@ -321,19 +321,19 @@ await checkClientAdminAccess()      // Return null if not authorized
 // Permission checks
 canManageUser(currentRole, currentCompanyId, targetCompanyId)
 canAccessCompany(userRole, userCompanyId, targetCompanyId)
-```
+\`\`\`
 
 #### 3. Middleware (`proxy.ts`)
 Kiểm tra authentication và redirect:
-```typescript
+\`\`\`typescript
 // Public routes: /, /auth/*
 // Protected routes: /dashboard/*, /admin/*
 // Admin routes: Require admin or system_admin role
-```
+\`\`\`
 
 #### 4. Admin Layout
 Kiểm tra quyền truy cập admin panel:
-```typescript
+\`\`\`typescript
 const { data: { user } } = await supabase.auth.getUser()
 const { data: profile } = await supabase
   .from("profiles")
@@ -344,7 +344,7 @@ const { data: profile } = await supabase
 if (!profile || !canAccessAdminPanel(profile.role)) {
   redirect("/dashboard")
 }
-```
+\`\`\`
 
 ---
 
@@ -352,7 +352,7 @@ if (!profile || !canAccessAdminPanel(profile.role)) {
 
 ### Kiểm tra quyền trong Server Component
 
-```typescript
+\`\`\`typescript
 import { canAccessAdminPanel, isSystemAdmin } from "@/lib/auth/roles"
 import { createClient } from "@/lib/supabase/server"
 
@@ -390,11 +390,11 @@ export default async function MyPage() {
   
   return <div>{/* Your content */}</div>
 }
-```
+\`\`\`
 
 ### Kiểm tra quyền trong Client Component
 
-```typescript
+\`\`\`typescript
 "use client"
 
 import { useEffect, useState } from "react"
@@ -434,11 +434,11 @@ export function MyClientComponent() {
     </div>
   )
 }
-```
+\`\`\`
 
 ### Kiểm tra quyền trong Server Action
 
-```typescript
+\`\`\`typescript
 "use server"
 
 import { requireAdminAccess, requireSystemAdmin } from "@/lib/auth/permissions"
@@ -483,11 +483,11 @@ export async function deleteCompany(companyId: string) {
   
   return { success: true }
 }
-```
+\`\`\`
 
 ### Hiển thị UI theo Role
 
-```typescript
+\`\`\`typescript
 import { getRoleDisplayName } from "@/lib/auth/roles"
 
 function UserBadge({ role }: { role: string }) {
@@ -505,11 +505,11 @@ function UserBadge({ role }: { role: string }) {
     </span>
   )
 }
-```
+\`\`\`
 
 ### Navigation với Role-based links
 
-```typescript
+\`\`\`typescript
 import { canAccessAdminPanel } from "@/lib/auth/roles"
 
 export function Navigation({ userRole }: { userRole: string }) {
@@ -524,7 +524,7 @@ export function Navigation({ userRole }: { userRole: string }) {
     </nav>
   )
 }
-```
+\`\`\`
 
 ---
 
@@ -541,7 +541,7 @@ export function Navigation({ userRole }: { userRole: string }) {
 2. **Least Privilege**: Mỗi role chỉ có quyền tối thiểu cần thiết
 
 3. **Data Isolation**: Filter dữ liệu theo company_id
-   ```typescript
+   \`\`\`typescript
    // System admin sees all
    if (isSystemAdmin(profile.role)) {
      query = supabase.from("users").select("*")
@@ -552,10 +552,10 @@ export function Navigation({ userRole }: { userRole: string }) {
        .select("*")
        .eq("company_id", profile.company_id)
    }
-   ```
+   \`\`\`
 
 4. **Row Level Security (RLS)**: Sử dụng Supabase RLS policies
-   ```sql
+   \`\`\`sql
    -- Users can only see data from their company
    CREATE POLICY "Users can view own company data"
    ON facilities FOR SELECT
@@ -570,7 +570,7 @@ export function Navigation({ userRole }: { userRole: string }) {
        AND role = 'system_admin'
      )
    );
-   ```
+   \`\`\`
 
 5. **Audit Logging**: Log tất cả thao tác quan trọng
    - User creation/deletion
@@ -595,7 +595,7 @@ export function Navigation({ userRole }: { userRole: string }) {
 
 ### Test Cases cho từng Role
 
-```typescript
+\`\`\`typescript
 describe("Permission System", () => {
   test("system_admin can access all companies", async () => {
     const profile = { role: "system_admin", company_id: null }
@@ -620,7 +620,7 @@ describe("Permission System", () => {
     expect(canManageFacilities(profile.role)).toBe(false)
   })
 })
-```
+\`\`\`
 
 ---
 

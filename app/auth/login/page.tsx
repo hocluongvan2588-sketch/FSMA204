@@ -8,8 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useState, useEffect } from "react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlertCircle, Info } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -17,6 +20,27 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const urlError = searchParams.get("error")
+    if (urlError === "profile_missing") {
+      setError("Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại hoặc liên hệ quản trị viên.")
+      toast({
+        variant: "destructive",
+        title: "⚠️ Lỗi hồ sơ người dùng",
+        description: "Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.",
+      })
+    } else if (urlError === "database_config_error") {
+      setError("Lỗi cấu hình cơ sở dữ liệu. Vui lòng liên hệ quản trị viên.")
+      toast({
+        variant: "destructive",
+        title: "⚠️ Lỗi cấu hình hệ thống",
+        description: "Cơ sở dữ liệu cần được cấu hình lại. Vui lòng liên hệ quản trị viên.",
+      })
+    }
+  }, [searchParams, toast])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,10 +54,23 @@ export default function LoginPage() {
         password,
       })
       if (error) throw error
+
+      toast({
+        title: "✅ Đăng nhập thành công!",
+        description: `Chào mừng bạn trở lại, ${email}`,
+      })
+
       router.push("/dashboard")
       router.refresh()
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "Đã xảy ra lỗi")
+      const errorMessage = error instanceof Error ? error.message : "Đã xảy ra lỗi"
+      setError(errorMessage)
+
+      toast({
+        variant: "destructive",
+        title: "❌ Đăng nhập thất bại",
+        description: errorMessage,
+      })
     } finally {
       setIsLoading(false)
     }
@@ -83,7 +120,12 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
-                {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>}
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Đang đăng nhập..." : "Đăng nhập"}
                 </Button>
@@ -97,6 +139,13 @@ export default function LoginPage() {
             </form>
           </CardContent>
         </Card>
+
+        <Alert className="mt-4 bg-blue-50 border-blue-200">
+          <Info className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-sm text-blue-900">
+            Nếu bạn gặp vấn đề đăng nhập, vui lòng liên hệ quản trị viên hệ thống.
+          </AlertDescription>
+        </Alert>
       </div>
     </div>
   )

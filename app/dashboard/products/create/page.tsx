@@ -12,6 +12,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
+import { useToast } from "@/hooks/use-toast"
+import { createProduct } from "@/app/actions/products"
 
 export default function CreateProductPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -22,6 +24,7 @@ export default function CreateProductPage() {
   const [requiresCTE, setRequiresCTE] = useState(true)
   const router = useRouter()
   const supabase = createClient()
+  const { toast } = useToast()
 
   useEffect(() => {
     const getCompanyId = async () => {
@@ -41,15 +44,8 @@ export default function CreateProductPage() {
     setIsLoading(true)
     setError(null)
 
-    if (!companyId) {
-      setError("Bạn chưa có công ty. Vui lòng tạo công ty trước.")
-      setIsLoading(false)
-      return
-    }
-
     const formData = new FormData(e.currentTarget)
-    const data = {
-      company_id: companyId,
+    const input = {
       product_code: formData.get("product_code") as string,
       product_name: formData.get("product_name") as string,
       product_name_vi: formData.get("product_name_vi") as string,
@@ -60,18 +56,27 @@ export default function CreateProductPage() {
       requires_cte: requiresCTE,
     }
 
-    try {
-      const { error: insertError } = await supabase.from("products").insert(data)
+    const result = await createProduct(input)
 
-      if (insertError) throw insertError
-
-      router.push("/dashboard/products")
-      router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Đã xảy ra lỗi")
-    } finally {
+    if (result.error) {
+      setError(result.error)
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi tạo sản phẩm",
+        description: result.error,
+      })
       setIsLoading(false)
+      return
     }
+
+    const ftlIndicator = isFTL ? " (FTL)" : ""
+    toast({
+      title: "✅ Tạo sản phẩm thành công!",
+      description: `Đã thêm sản phẩm "${input.product_name}"${ftlIndicator} với mã ${input.product_code}`,
+    })
+
+    router.push("/dashboard/products")
+    router.refresh()
   }
 
   return (

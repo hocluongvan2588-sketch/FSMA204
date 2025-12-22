@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -13,7 +12,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { useLanguage } from "@/contexts/language-context"
 import { UserRole, getRoleDisplayName, isSystemAdmin } from "@/lib/auth/roles"
-import { createUser, createCompany } from "@/app/actions/admin-users"
+import { createUser, createCompany, deleteUser } from "@/app/actions/admin-users"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
+import { Eye } from "lucide-react"
 
 interface Profile {
   id: string
@@ -43,6 +54,9 @@ export default function AdminUsersPage() {
   const [phone, setPhone] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [showSystemAdminConfirm, setShowSystemAdminConfirm] = useState(false)
+  const [pendingFormData, setPendingFormData] = useState<any>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     loadData()
@@ -91,6 +105,16 @@ export default function AdminUsersPage() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (role === UserRole.SYSTEM_ADMIN) {
+      setPendingFormData({ email, password, fullName, role, companyId, phone })
+      setShowSystemAdminConfirm(true)
+      return
+    }
+
+    await executeCreateUser()
+  }
+
+  const executeCreateUser = async () => {
     setIsLoading(true)
     setError(null)
     setSuccess(null)
@@ -110,12 +134,26 @@ export default function AdminUsersPage() {
           setShowEnvWarning(true)
         }
         setError(result.error)
+        toast({
+          variant: "destructive",
+          title: "❌ Lỗi tạo tài khoản",
+          description: result.error,
+        })
         return
       }
 
       setSuccess("Tạo tài khoản thành công!")
+      const roleMessage =
+        role === UserRole.SYSTEM_ADMIN
+          ? "🔒 System Admin với toàn quyền hệ thống"
+          : role === UserRole.ADMIN
+            ? "👔 Admin có quyền quản trị công ty"
+            : "👤 Người dùng thông thường"
+      toast({
+        title: "✅ Tạo tài khoản thành công!",
+        description: `Đã tạo tài khoản cho ${fullName} (${email}) với vai trò ${roleMessage}`,
+      })
 
-      // Reset form
       setEmail("")
       setPassword("")
       setFullName("")
@@ -124,47 +162,93 @@ export default function AdminUsersPage() {
       setPhone("")
       setShowCreateForm(false)
 
-      // Reload data
       loadData()
     } catch (err: any) {
       setError(err.message || "Có lỗi xảy ra khi tạo tài khoản")
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi không xác định",
+        description: err.message || "Có lỗi xảy ra khi tạo tài khoản",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleCreateCompany = async () => {
-    if (!newCompanyName.trim()) {
-      setError("Vui lòng nhập tên công ty")
-      return
-    }
+  const handleConfirmSystemAdmin = async () => {
+    setShowSystemAdminConfirm(false)
+    await executeCreateUser()
+  }
 
+  const handleCreateCompany = async () => {
     setIsCreatingCompany(true)
     setError(null)
+    setSuccess(null)
 
     try {
-      const result = await createCompany(newCompanyName)
+      const result = await createCompany({ name: newCompanyName })
 
       if (result.error) {
         setError(result.error)
+        toast({
+          variant: "destructive",
+          title: "❌ Lỗi tạo công ty",
+          description: result.error,
+        })
         return
       }
 
-      setSuccess(`Công ty "${newCompanyName}" đã được tạo thành công!`)
+      setSuccess("Tạo công ty thành công!")
+      toast({
+        title: "✅ Tạo công ty thành công!",
+        description: `Đã tạo công ty "${newCompanyName}" trong hệ thống`,
+      })
       setNewCompanyName("")
       setShowCreateCompany(false)
-
-      // Reload companies
       loadData()
-
-      // Auto-select the new company
-      if (result.company) {
-        setCompanyId(result.company.id)
-      }
     } catch (err: any) {
       setError(err.message || "Có lỗi xảy ra khi tạo công ty")
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi không xác định",
+        description: err.message || "Có lỗi xảy ra khi tạo công ty",
+      })
     } finally {
       setIsCreatingCompany(false)
+    }
+  }
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa tài khoản của ${userName}?`)) {
+      return
+    }
+
+    try {
+      const result = await deleteUser(userId)
+
+      if (result.error) {
+        setError(result.error)
+        toast({
+          variant: "destructive",
+          title: "❌ Lỗi xóa tài khoản",
+          description: result.error,
+        })
+        return
+      }
+
+      setSuccess("Xóa tài khoản thành công!")
+      toast({
+        title: "✅ Xóa tài khoản thành công!",
+        description: `Đã xóa tài khoản của ${userName}`,
+      })
+      loadData()
+    } catch (err: any) {
+      setError(err.message || "Có lỗi xảy ra khi xóa tài khoản")
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi không xác định",
+        description: err.message || "Có lỗi xảy ra khi xóa tài khoản",
+      })
     }
   }
 
@@ -287,6 +371,85 @@ export default function AdminUsersPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateUser} className="space-y-4">
+              {role === UserRole.SYSTEM_ADMIN && (
+                <div className="bg-purple-50 border-2 border-purple-500 rounded-lg p-4 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <svg
+                      className="h-6 w-6 text-purple-600 mt-0.5 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="font-bold text-purple-900 text-lg">⚠️ Cảnh báo: Đang tạo SYSTEM ADMIN</p>
+                      <p className="text-purple-800 mt-1 text-sm">
+                        Vai trò này có toàn quyền truy cập hệ thống, có thể quản lý tất cả công ty và người dùng. Chỉ
+                        cấp quyền này cho người đáng tin cậy.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {role === UserRole.ADMIN && (
+                <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <svg
+                      className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="font-semibold text-amber-900">Vai trò được chọn: Admin</p>
+                      <p className="text-amber-800 text-sm">Có quyền quản trị công ty và tạo người dùng.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {role === UserRole.VIEWER && (
+                <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <svg
+                      className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="font-semibold text-blue-900">Vai trò được chọn: Viewer (Chỉ xem)</p>
+                      <p className="text-blue-800 text-sm">Chỉ có quyền xem dữ liệu, không thể chỉnh sửa.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">Email *</Label>
@@ -336,15 +499,20 @@ export default function AdminUsersPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="role">Vai trò *</Label>
+                  <Label htmlFor="role" className="flex items-center gap-2">
+                    Vai trò *
+                    {role === UserRole.SYSTEM_ADMIN && (
+                      <Badge className="bg-purple-600 text-white">QUYỀN CAO NHẤT</Badge>
+                    )}
+                  </Label>
                   <Select value={role} onValueChange={setRole}>
-                    <SelectTrigger>
+                    <SelectTrigger className={role === UserRole.SYSTEM_ADMIN ? "border-purple-500 border-2" : ""}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {currentUserProfile && isSystemAdmin(currentUserProfile.role) && (
-                        <SelectItem value={UserRole.SYSTEM_ADMIN}>
-                          {getRoleDisplayName(UserRole.SYSTEM_ADMIN, language)} - Toàn quyền hệ thống
+                        <SelectItem value={UserRole.SYSTEM_ADMIN} className="bg-purple-50 font-bold">
+                          🔒 {getRoleDisplayName(UserRole.SYSTEM_ADMIN, language)} - Toàn quyền hệ thống
                         </SelectItem>
                       )}
                       <SelectItem value={UserRole.ADMIN}>
@@ -414,13 +582,58 @@ export default function AdminUsersPage() {
                 </div>
               </div>
 
-              <Button type="submit" disabled={isLoading} className="w-full">
-                {isLoading ? "Đang tạo..." : "Tạo tài khoản"}
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full ${role === UserRole.SYSTEM_ADMIN ? "bg-purple-600 hover:bg-purple-700" : ""}`}
+              >
+                {isLoading ? "Đang tạo..." : role === UserRole.SYSTEM_ADMIN ? "🔒 Tạo System Admin" : "Tạo tài khoản"}
               </Button>
             </form>
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={showSystemAdminConfirm} onOpenChange={setShowSystemAdminConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-purple-900 text-xl">⚠️ Xác nhận tạo System Admin</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3 text-base">
+              <p className="font-semibold text-purple-800">
+                Bạn đang tạo tài khoản với quyền SYSTEM ADMIN - quyền cao nhất trong hệ thống.
+              </p>
+              <div className="bg-purple-50 border border-purple-200 rounded p-3 space-y-2">
+                <p className="font-medium text-purple-900">Thông tin tài khoản:</p>
+                <ul className="text-sm text-purple-800 space-y-1">
+                  <li>
+                    • <strong>Email:</strong> {email}
+                  </li>
+                  <li>
+                    • <strong>Họ tên:</strong> {fullName}
+                  </li>
+                  <li>
+                    • <strong>Vai trò:</strong> System Administrator
+                  </li>
+                </ul>
+              </div>
+              <p className="text-sm text-gray-700">System Admin có thể:</p>
+              <ul className="text-sm text-gray-700 list-disc list-inside space-y-1">
+                <li>Quản lý tất cả công ty và người dùng</li>
+                <li>Xem và chỉnh sửa mọi dữ liệu trong hệ thống</li>
+                <li>Tạo và xóa System Admin khác</li>
+                <li>Truy cập logs và cấu hình hệ thống</li>
+              </ul>
+              <p className="font-semibold text-red-600">Bạn có chắc chắn muốn tiếp tục?</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowSystemAdminConfirm(false)}>Hủy bỏ</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmSystemAdmin} className="bg-purple-600 hover:bg-purple-700">
+              Xác nhận tạo System Admin
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Card>
         <CardHeader>
@@ -434,6 +647,7 @@ export default function AdminUsersPage() {
                 <TableHead>Vai trò</TableHead>
                 <TableHead>Số điện thoại</TableHead>
                 <TableHead>Ngày tạo</TableHead>
+                <TableHead>Hành động</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -445,6 +659,25 @@ export default function AdminUsersPage() {
                   </TableCell>
                   <TableCell>{profile.phone || "-"}</TableCell>
                   <TableCell>{new Date(profile.created_at).toLocaleDateString("vi-VN")}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => (window.location.href = `/admin/users/${profile.id}`)}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Chi tiết
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteUser(profile.id, profile.full_name)}
+                      >
+                        Xóa
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

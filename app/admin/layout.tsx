@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { AdminNav } from "@/components/admin-nav"
 import { LanguageProvider } from "@/contexts/language-context"
 import { canAccessAdminPanel } from "@/lib/auth/roles"
+import { SubscriptionAlert } from "@/components/subscription-alert"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -16,7 +17,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/auth/login")
   }
 
-  const { data: profile, error: profileError } = await supabase.from("profiles").select("*").eq("id", user.id).single()
+  const { ensureProfileExists } = await import("@/lib/supabase/profile-helpers")
+  const { profile, error: profileError } = await ensureProfileExists(user)
 
   console.log("[v0] Admin Layout - User ID:", user.id)
   console.log("[v0] Admin Layout - Profile:", profile)
@@ -25,8 +27,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   console.log("[v0] Admin Layout - Can Access:", profile ? canAccessAdminPanel(profile.role) : false)
 
   if (!profile) {
-    console.log("[v0] Admin Layout - No profile found, redirecting to dashboard")
-    redirect("/dashboard")
+    console.log("[v0] Admin Layout - No profile found and could not create, redirecting to login")
+    redirect("/auth/login?error=profile_missing")
   }
 
   if (!canAccessAdminPanel(profile.role)) {
@@ -39,7 +41,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <div className="flex min-h-screen bg-slate-50">
         <AdminNav user={user} profile={profile} />
         <main className="flex-1 overflow-y-auto">
-          <div className="container mx-auto p-6 max-w-7xl">{children}</div>
+          <div className="container mx-auto p-6 max-w-7xl">
+            {profile.company_id && profile.role === "admin" && <SubscriptionAlert companyId={profile.company_id} />}
+            {children}
+          </div>
         </main>
       </div>
     </LanguageProvider>

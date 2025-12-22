@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
+import { useToast } from "@/hooks/use-toast"
+import { createFacility } from "@/app/actions/facilities"
 
 export default function CreateFacilityPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -20,6 +22,7 @@ export default function CreateFacilityPage() {
   const [certificationStatus, setCertificationStatus] = useState("")
   const router = useRouter()
   const supabase = createClient()
+  const { toast } = useToast()
 
   useEffect(() => {
     const getCompanyId = async () => {
@@ -39,15 +42,8 @@ export default function CreateFacilityPage() {
     setIsLoading(true)
     setError(null)
 
-    if (!companyId) {
-      setError("Bạn chưa có công ty. Vui lòng tạo công ty trước.")
-      setIsLoading(false)
-      return
-    }
-
     const formData = new FormData(e.currentTarget)
-    const data = {
-      company_id: companyId,
+    const input = {
       name: formData.get("name") as string,
       facility_type: facilityType,
       location_code: formData.get("location_code") as string,
@@ -56,18 +52,26 @@ export default function CreateFacilityPage() {
       certification_status: certificationStatus,
     }
 
-    try {
-      const { error: insertError } = await supabase.from("facilities").insert(data)
+    const result = await createFacility(input)
 
-      if (insertError) throw insertError
-
-      router.push("/dashboard/facilities")
-      router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Đã xảy ra lỗi")
-    } finally {
+    if (result.error) {
+      setError(result.error)
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi tạo cơ sở",
+        description: result.error,
+      })
       setIsLoading(false)
+      return
     }
+
+    toast({
+      title: "✅ Tạo cơ sở thành công!",
+      description: `Đã thêm cơ sở "${input.name}" (${input.location_code}) vào hệ thống`,
+    })
+
+    router.push("/dashboard/facilities")
+    router.refresh()
   }
 
   return (

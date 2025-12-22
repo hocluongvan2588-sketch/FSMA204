@@ -10,12 +10,14 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { useToast } from "@/hooks/use-toast"
 
 export default function CreateCompanyPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
+  const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -33,12 +35,10 @@ export default function CreateCompanyPage() {
     }
 
     try {
-      // Create company
       const { data: company, error: companyError } = await supabase.from("companies").insert(data).select().single()
 
       if (companyError) throw companyError
 
-      // Update user profile with company_id
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -51,10 +51,22 @@ export default function CreateCompanyPage() {
         if (profileError) throw profileError
       }
 
+      toast({
+        title: "✅ Tạo công ty thành công!",
+        description: `Đã tạo công ty "${data.name}" với MST ${data.registration_number}`,
+      })
+
       router.push("/dashboard/company")
       router.refresh()
     } catch (err: any) {
-      setError(err.message || "Đã xảy ra lỗi")
+      const errorMessage = err.message || "Đã xảy ra lỗi"
+      setError(errorMessage)
+
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi tạo công ty",
+        description: errorMessage,
+      })
     } finally {
       setIsLoading(false)
     }

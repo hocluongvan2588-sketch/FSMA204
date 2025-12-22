@@ -8,7 +8,17 @@ import { usePathname, useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { useLanguage } from "@/contexts/language-context"
 import { LanguageSwitcher } from "@/components/language-switcher"
-import { LayoutDashboard, Users, Building2, FileText, Shield, LogOut, ArrowLeft } from "lucide-react"
+import {
+  LayoutDashboard,
+  Users,
+  Building2,
+  FileText,
+  Shield,
+  LogOut,
+  ArrowLeft,
+  Package,
+  CreditCard,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { getRoleDisplayName, isSystemAdmin } from "@/lib/auth/roles"
 
@@ -29,7 +39,7 @@ export function AdminNav({ user, profile }: AdminNavProps) {
     router.refresh()
   }
 
-  const navigation = [
+  const systemAdminNavigation = [
     {
       name: language === "vi" ? "Tổng quan" : "Overview",
       href: "/admin",
@@ -55,6 +65,57 @@ export function AdminNav({ user, profile }: AdminNavProps) {
       description: language === "vi" ? "Nhật ký kiểm toán" : "Audit trail",
     },
   ]
+
+  const companyAdminNavigation = [
+    {
+      name: language === "vi" ? "Tổng quan" : "Overview",
+      href: "/admin",
+      icon: LayoutDashboard,
+      description: language === "vi" ? "Dashboard quản trị" : "Admin dashboard",
+    },
+    {
+      name: language === "vi" ? "Người dùng công ty" : "Company Users",
+      href: "/admin/users",
+      icon: Users,
+      description: language === "vi" ? "Quản lý người dùng" : "User management",
+    },
+    {
+      name: language === "vi" ? "Công ty của tôi" : "My Company",
+      href: "/admin/my-company",
+      icon: Building2,
+      description: language === "vi" ? "Thông tin công ty" : "Company information",
+    },
+  ]
+
+  const navigation = isSystemAdmin(profile?.role) ? systemAdminNavigation : companyAdminNavigation
+
+  const serviceNavigation = isSystemAdmin(profile?.role)
+    ? [
+        {
+          name: language === "vi" ? "Gói dịch vụ" : "Service Packages",
+          href: "/admin/service-packages",
+          icon: Package,
+          description: language === "vi" ? "Quản lý gói dịch vụ" : "Package management",
+        },
+        {
+          name: language === "vi" ? "Đăng ký dịch vụ" : "Subscriptions",
+          href: "/admin/subscriptions",
+          icon: CreditCard,
+          description: language === "vi" ? "Quản lý đăng ký" : "Subscription management",
+        },
+      ]
+    : []
+
+  const companyServiceNavigation = !isSystemAdmin(profile?.role)
+    ? [
+        {
+          name: language === "vi" ? "Gói dịch vụ của tôi" : "My Subscription",
+          href: "/admin/my-subscription",
+          icon: CreditCard,
+          description: language === "vi" ? "Xem và nâng cấp gói" : "View and upgrade plan",
+        },
+      ]
+    : []
 
   return (
     <aside className="w-72 border-r bg-white shadow-sm flex flex-col">
@@ -120,6 +181,70 @@ export function AdminNav({ user, profile }: AdminNavProps) {
           )
         })}
 
+        {serviceNavigation.length > 0 && (
+          <>
+            <div className="pt-4">
+              <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                {language === "vi" ? "QUẢN LÝ DỊCH VỤ" : "SERVICE MANAGEMENT"}
+              </p>
+            </div>
+            {serviceNavigation.map((item) => {
+              const isActive = pathname === item.href
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all hover:scale-[1.02]",
+                    isActive
+                      ? "bg-gradient-to-r from-blue-50 to-teal-50 text-blue-700 shadow-sm border border-blue-100"
+                      : "text-slate-700 hover:bg-slate-100",
+                  )}
+                >
+                  <Icon className={cn("h-5 w-5 mt-0.5 flex-shrink-0", isActive ? "text-blue-600" : "text-slate-500")} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold">{item.name}</div>
+                    <div className="text-xs text-slate-500">{item.description}</div>
+                  </div>
+                </Link>
+              )
+            })}
+          </>
+        )}
+
+        {companyServiceNavigation.length > 0 && (
+          <>
+            <div className="pt-4">
+              <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                {language === "vi" ? "DỊCH VỤ" : "SERVICES"}
+              </p>
+            </div>
+            {companyServiceNavigation.map((item) => {
+              const isActive = pathname === item.href
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all hover:scale-[1.02]",
+                    isActive
+                      ? "bg-gradient-to-r from-blue-50 to-teal-50 text-blue-700 shadow-sm border border-blue-100"
+                      : "text-slate-700 hover:bg-slate-100",
+                  )}
+                >
+                  <Icon className={cn("h-5 w-5 mt-0.5 flex-shrink-0", isActive ? "text-blue-600" : "text-slate-500")} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold">{item.name}</div>
+                    <div className="text-xs text-slate-500">{item.description}</div>
+                  </div>
+                </Link>
+              )
+            })}
+          </>
+        )}
+
         <div className="pt-6">
           <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
             {language === "vi" ? "KHÁC" : "OTHER"}
@@ -143,10 +268,14 @@ export function AdminNav({ user, profile }: AdminNavProps) {
             {profile?.full_name || (language === "vi" ? "Quản trị viên" : "Administrator")}
           </p>
           <p className="text-xs text-slate-500 truncate">{profile?.email || user.email}</p>
-          {isSystemAdmin(profile?.role) && (
-            <p className="text-xs text-purple-600 font-semibold mt-1">
-              {language === "vi" ? "Không thuộc công ty (Toàn hệ thống)" : "No Company (System-wide)"}
-            </p>
+          {isSystemAdmin(profile?.role) ? (
+            <Badge className="mt-2 w-full justify-center bg-purple-600 hover:bg-purple-700">
+              {language === "vi" ? "SYSTEM ADMIN - Toàn hệ thống" : "SYSTEM ADMIN - Full Access"}
+            </Badge>
+          ) : (
+            <Badge className="mt-2 w-full justify-center bg-orange-600 hover:bg-orange-700">
+              {language === "vi" ? "ADMIN - Phạm vi công ty" : "ADMIN - Company Scope"}
+            </Badge>
           )}
         </div>
 

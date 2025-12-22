@@ -21,7 +21,33 @@ export async function ensureProfileExists(user: User) {
     return { profile, error: null, created: false, invalidSession: false }
   }
 
-  // Check if error is "not found" vs other errors
+  if (profileError && profileError.code === "42P17") {
+    console.error("[v0] ========================================")
+    console.error("[v0] RLS INFINITE RECURSION DETECTED")
+    console.error("[v0] ========================================")
+    console.error("[v0] Error:", {
+      message: profileError.message,
+      code: profileError.code,
+      hint: profileError.hint,
+    })
+    console.error("[v0] ")
+    console.error("[v0] SOLUTION: Run the following script in Supabase SQL Editor:")
+    console.error("[v0] scripts/016_ultimate_rls_fix.sql")
+    console.error("[v0] ")
+    console.error("[v0] This will:")
+    console.error("[v0] 1. Remove all recursive RLS policies")
+    console.error("[v0] 2. Create simple, non-recursive policies")
+    console.error("[v0] 3. Allow profile creation to work properly")
+    console.error("[v0] ========================================")
+
+    return {
+      profile: null,
+      error: profileError,
+      created: false,
+      invalidSession: false,
+    }
+  }
+
   const isNotFoundError =
     !profileError ||
     profileError.code === "PGRST116" ||
@@ -29,14 +55,7 @@ export async function ensureProfileExists(user: User) {
     profileError.details?.includes("0 rows") ||
     profileError.message?.includes("not found")
 
-  if (profileError && profileError.code === "42P17") {
-    console.error("[v0] RLS infinite recursion detected:", {
-      message: profileError.message,
-      code: profileError.code,
-      hint: "The RLS policies on profiles table need to be fixed. Run script 008_fix_rls_recursion.sql",
-    })
-    // Don't return early - we'll try to create the profile below
-  } else if (profileError && !isNotFoundError) {
+  if (profileError && !isNotFoundError) {
     // For other non-"not found" errors, return the error
     console.error("[v0] Profile fetch error:", {
       message: profileError.message,
@@ -73,11 +92,11 @@ export async function ensureProfileExists(user: User) {
     })
 
     if (createError.code === "42P17") {
-      console.error("[v0] CRITICAL: RLS infinite recursion prevents profile creation.")
-      console.error("[v0] Quick fix: Temporarily disable RLS on profiles table:")
-      console.error("[v0]   ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;")
-      console.error("[v0] Then re-enable after creating profiles:")
-      console.error("[v0]   ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;")
+      console.error("[v0] ========================================")
+      console.error("[v0] CRITICAL: RLS infinite recursion prevents profile creation")
+      console.error("[v0] ========================================")
+      console.error("[v0] Run script: scripts/016_ultimate_rls_fix.sql")
+      console.error("[v0] ========================================")
     }
 
     return { profile: null, error: createError, created: false, invalidSession: false }

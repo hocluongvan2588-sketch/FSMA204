@@ -20,17 +20,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { profile, error: profileError } = await ensureProfileExists(user)
 
   if (!profile) {
-    if (profileError && profileError.code === "42P17") {
-      console.error("[v0] RLS infinite recursion detected. Please run the fix script.")
-      redirect("/auth/login?error=database_config_error")
+    if (profileError?.code === "42P17") {
+      console.error("[v0] ===== RLS INFINITE RECURSION DETECTED =====")
+      console.error("[v0] This error prevents profile creation.")
+      console.error("[v0] To fix: Run script 016_ultimate_rls_fix.sql in Supabase SQL Editor")
+      console.error("[v0] Error details:", profileError)
+      redirect("/auth/login?error=rls_recursion")
     }
 
     console.error("[v0] Could not load or create profile for user:", user.email)
+    console.error("[v0] Error:", profileError)
     await supabase.auth.signOut()
     redirect("/auth/login?error=profile_creation_failed")
   }
 
-  if (profile?.role === "system_admin") {
+  if (profile.role === "system_admin") {
     redirect("/admin")
   }
 
@@ -40,7 +44,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <DashboardNav user={user} profile={profile} />
         <main className="flex-1 overflow-y-auto bg-slate-50">
           <div className="container mx-auto p-6">
-            {profile.company_id && <SubscriptionAlert companyId={profile.company_id} />}
+            {profile?.company_id && <SubscriptionAlert companyId={profile.company_id} />}
             {children}
           </div>
         </main>

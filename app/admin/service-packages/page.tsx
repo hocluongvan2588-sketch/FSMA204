@@ -52,7 +52,7 @@ interface ServicePackage {
 }
 
 export default function AdminServicePackagesPage() {
-  const { language } = useLanguage()
+  const { locale, t } = useLanguage()
   const [packages, setPackages] = useState<ServicePackage[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
@@ -118,8 +118,8 @@ export default function AdminServicePackagesPage() {
       console.error("Error loading packages:", error)
       toast({
         variant: "destructive",
-        title: language === "vi" ? "Lỗi tải dữ liệu" : "Error loading data",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: t("error_loading_data"),
+        description: error instanceof Error ? error.message : t("unknown_error"),
       })
     } finally {
       setIsLoading(false)
@@ -135,11 +135,8 @@ export default function AdminServicePackagesPage() {
       if (error) throw error
 
       toast({
-        title: language === "vi" ? "✅ Tạo gói dịch vụ thành công" : "✅ Package created successfully",
-        description:
-          language === "vi"
-            ? `Gói "${formData.package_name}" đã được tạo`
-            : `Package "${formData.package_name}" has been created`,
+        title: t("package_created_successfully"),
+        description: t("package_created", { name: formData.package_name }),
       })
 
       setShowCreateDialog(false)
@@ -149,8 +146,8 @@ export default function AdminServicePackagesPage() {
       console.error("Error creating package:", error)
       toast({
         variant: "destructive",
-        title: language === "vi" ? "Lỗi tạo gói dịch vụ" : "Error creating package",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: t("error_creating_package"),
+        description: error instanceof Error ? error.message : t("unknown_error"),
       })
     }
   }
@@ -166,11 +163,8 @@ export default function AdminServicePackagesPage() {
       if (error) throw error
 
       toast({
-        title: language === "vi" ? "✅ Cập nhật thành công" : "✅ Updated successfully",
-        description:
-          language === "vi"
-            ? `Gói "${formData.package_name}" đã được cập nhật`
-            : `Package "${formData.package_name}" has been updated`,
+        title: t("updated_successfully"),
+        description: t("package_updated", { name: formData.package_name }),
       })
 
       setEditingPackage(null)
@@ -180,14 +174,14 @@ export default function AdminServicePackagesPage() {
       console.error("Error updating package:", error)
       toast({
         variant: "destructive",
-        title: language === "vi" ? "Lỗi cập nhật" : "Error updating",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: t("error_updating"),
+        description: error instanceof Error ? error.message : t("unknown_error"),
       })
     }
   }
 
   const handleDeletePackage = async (pkg: ServicePackage) => {
-    if (!confirm(language === "vi" ? `Xóa gói "${pkg.package_name}"?` : `Delete package "${pkg.package_name}"?`)) return
+    if (!confirm(t("confirm_delete_package", { name: pkg.package_name }))) return
 
     const supabase = createClient()
 
@@ -197,8 +191,8 @@ export default function AdminServicePackagesPage() {
       if (error) throw error
 
       toast({
-        title: language === "vi" ? "✅ Xóa thành công" : "✅ Deleted successfully",
-        description: language === "vi" ? `Đã xóa gói "${pkg.package_name}"` : `Deleted package "${pkg.package_name}"`,
+        title: t("deleted_successfully"),
+        description: t("package_deleted", { name: pkg.package_name }),
       })
 
       loadPackages()
@@ -206,8 +200,8 @@ export default function AdminServicePackagesPage() {
       console.error("Error deleting package:", error)
       toast({
         variant: "destructive",
-        title: language === "vi" ? "Lỗi xóa gói" : "Error deleting package",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: t("error_deleting_package"),
+        description: error instanceof Error ? error.message : t("unknown_error"),
       })
     }
   }
@@ -270,7 +264,7 @@ export default function AdminServicePackagesPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-lg">{language === "vi" ? "Đang tải..." : "Loading..."}</div>
+        <div className="text-lg">{t("loading")}</div>
       </div>
     )
   }
@@ -279,9 +273,7 @@ export default function AdminServicePackagesPage() {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <p className="text-red-800 font-medium">
-            {language === "vi" ? "Bạn không có quyền truy cập trang này" : "You don't have access to this page"}
-          </p>
+          <p className="text-red-800 font-medium">{t("no_access")}</p>
         </div>
       </div>
     )
@@ -291,12 +283,8 @@ export default function AdminServicePackagesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{language === "vi" ? "Quản lý gói dịch vụ" : "Service Packages"}</h1>
-          <p className="text-muted-foreground mt-1">
-            {language === "vi"
-              ? "Tạo và quản lý các gói dịch vụ cho khách hàng"
-              : "Create and manage service packages for customers"}
-          </p>
+          <h1 className="text-3xl font-bold">{t("service_packages")}</h1>
+          <p className="text-muted-foreground mt-1">{t("create_and_manage_service_packages")}</p>
         </div>
         <Button
           onClick={() => {
@@ -305,7 +293,7 @@ export default function AdminServicePackagesPage() {
           }}
         >
           <Plus className="h-4 w-4 mr-2" />
-          {language === "vi" ? "Tạo gói mới" : "Create Package"}
+          {t("create_package")}
         </Button>
       </div>
 
@@ -313,9 +301,7 @@ export default function AdminServicePackagesPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Tổng gói" : "Total Packages"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("total_packages")}</CardTitle>
             <Package className="h-5 w-5 text-blue-600" />
           </CardHeader>
           <CardContent>
@@ -325,9 +311,7 @@ export default function AdminServicePackagesPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Đang hoạt động" : "Active"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("active")}</CardTitle>
             <Package className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent>
@@ -337,9 +321,7 @@ export default function AdminServicePackagesPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Nổi bật" : "Featured"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("featured")}</CardTitle>
             <Star className="h-5 w-5 text-yellow-600" />
           </CardHeader>
           <CardContent>
@@ -349,9 +331,7 @@ export default function AdminServicePackagesPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Không hoạt động" : "Inactive"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("inactive")}</CardTitle>
             <Package className="h-5 w-5 text-gray-600" />
           </CardHeader>
           <CardContent>
@@ -363,29 +343,23 @@ export default function AdminServicePackagesPage() {
       {/* Packages Table */}
       <Card>
         <CardHeader>
-          <CardTitle>{language === "vi" ? "Danh sách gói dịch vụ" : "Package List"}</CardTitle>
-          <CardDescription>
-            {language === "vi"
-              ? `${packages.length} gói dịch vụ trong hệ thống`
-              : `${packages.length} packages in the system`}
-          </CardDescription>
+          <CardTitle>{t("package_list")}</CardTitle>
+          <CardDescription>{t("packages_in_system", { count: packages.length })}</CardDescription>
         </CardHeader>
         <CardContent>
           {packages.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {language === "vi" ? "Chưa có gói dịch vụ nào" : "No packages yet"}
-            </div>
+            <div className="text-center py-12 text-muted-foreground">{t("no_packages_yet")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{language === "vi" ? "Mã gói" : "Code"}</TableHead>
-                  <TableHead>{language === "vi" ? "Tên gói" : "Name"}</TableHead>
-                  <TableHead>{language === "vi" ? "Giá" : "Price"}</TableHead>
-                  <TableHead>{language === "vi" ? "Giới hạn" : "Limits"}</TableHead>
-                  <TableHead>{language === "vi" ? "Tính năng" : "Features"}</TableHead>
-                  <TableHead>{language === "vi" ? "Trạng thái" : "Status"}</TableHead>
-                  <TableHead className="text-right">{language === "vi" ? "Thao tác" : "Actions"}</TableHead>
+                  <TableHead>{t("code")}</TableHead>
+                  <TableHead>{t("name")}</TableHead>
+                  <TableHead>{t("price")}</TableHead>
+                  <TableHead>{t("limits")}</TableHead>
+                  <TableHead>{t("features")}</TableHead>
+                  <TableHead>{t("status")}</TableHead>
+                  <TableHead className="text-right">{t("actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -397,37 +371,37 @@ export default function AdminServicePackagesPage() {
                     <TableCell>
                       <div>
                         <div className="font-medium flex items-center gap-2">
-                          {language === "vi" ? pkg.package_name_vi : pkg.package_name}
+                          {locale === "vi" ? pkg.package_name_vi : pkg.package_name}
                           {pkg.is_featured && <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />}
                         </div>
                         <div className="text-sm text-muted-foreground line-clamp-1">
-                          {language === "vi" ? pkg.description_vi : pkg.description}
+                          {locale === "vi" ? pkg.description_vi : pkg.description}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
                         <div className="font-medium">
-                          ${pkg.price_monthly}/{language === "vi" ? "tháng" : "mo"}
+                          ${pkg.price_monthly}/{t("month")}
                         </div>
                         <div className="text-muted-foreground">
-                          ${pkg.price_yearly}/{language === "vi" ? "năm" : "yr"}
+                          ${pkg.price_yearly}/{t("year")}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="text-xs space-y-1">
                         <div>
-                          {pkg.max_users} {language === "vi" ? "người dùng" : "users"}
+                          {pkg.max_users} {t("users")}
                         </div>
                         <div>
-                          {pkg.max_facilities} {language === "vi" ? "cơ sở" : "facilities"}
+                          {pkg.max_facilities} {t("facilities")}
                         </div>
                         <div>
-                          {pkg.max_products} {language === "vi" ? "sản phẩm" : "products"}
+                          {pkg.max_products} {t("products")}
                         </div>
                         <div>
-                          {pkg.max_storage_gb} GB {language === "vi" ? "lưu trữ" : "storage"}
+                          {pkg.max_storage_gb} GB {t("storage")}
                         </div>
                       </div>
                     </TableCell>
@@ -440,7 +414,7 @@ export default function AdminServicePackagesPage() {
                         )}
                         {pkg.includes_agent_management && (
                           <Badge variant="secondary" className="text-xs">
-                            {language === "vi" ? "US Agent" : "Agent"}
+                            {t("us_agent")}
                           </Badge>
                         )}
                         {pkg.includes_cte_tracking && (
@@ -450,7 +424,7 @@ export default function AdminServicePackagesPage() {
                         )}
                         {pkg.includes_reporting && (
                           <Badge variant="secondary" className="text-xs">
-                            {language === "vi" ? "Báo cáo" : "Reports"}
+                            {t("reports")}
                           </Badge>
                         )}
                         {pkg.includes_api_access && (
@@ -462,13 +436,7 @@ export default function AdminServicePackagesPage() {
                     </TableCell>
                     <TableCell>
                       <Badge className={pkg.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}>
-                        {pkg.is_active
-                          ? language === "vi"
-                            ? "Hoạt động"
-                            : "Active"
-                          : language === "vi"
-                            ? "Tắt"
-                            : "Inactive"}
+                        {pkg.is_active ? t("active") : t("inactive")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -496,27 +464,15 @@ export default function AdminServicePackagesPage() {
       >
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingPackage
-                ? language === "vi"
-                  ? "Chỉnh sửa gói dịch vụ"
-                  : "Edit Package"
-                : language === "vi"
-                  ? "Tạo gói dịch vụ mới"
-                  : "Create New Package"}
-            </DialogTitle>
-            <DialogDescription>
-              {language === "vi"
-                ? "Điền thông tin gói dịch vụ. Các trường có dấu * là bắt buộc."
-                : "Fill in the package details. Fields marked with * are required."}
-            </DialogDescription>
+            <DialogTitle>{editingPackage ? t("edit_package") : t("create_new_package")}</DialogTitle>
+            <DialogDescription>{t("fill_package_details")}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Basic Info */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="package_code">{language === "vi" ? "Mã gói" : "Package Code"} *</Label>
+                <Label htmlFor="package_code">{t("package_code")} *</Label>
                 <Input
                   id="package_code"
                   value={formData.package_code}
@@ -525,7 +481,7 @@ export default function AdminServicePackagesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="sort_order">{language === "vi" ? "Thứ tự" : "Sort Order"}</Label>
+                <Label htmlFor="sort_order">{t("sort_order")}</Label>
                 <Input
                   id="sort_order"
                   type="number"
@@ -537,9 +493,7 @@ export default function AdminServicePackagesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="package_name">
-                  {language === "vi" ? "Tên gói (English)" : "Package Name (English)"} *
-                </Label>
+                <Label htmlFor="package_name">{t("package_name_english")} *</Label>
                 <Input
                   id="package_name"
                   value={formData.package_name}
@@ -547,9 +501,7 @@ export default function AdminServicePackagesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="package_name_vi">
-                  {language === "vi" ? "Tên gói (Tiếng Việt)" : "Package Name (Vietnamese)"} *
-                </Label>
+                <Label htmlFor="package_name_vi">{t("package_name_vietnamese")} *</Label>
                 <Input
                   id="package_name_vi"
                   value={formData.package_name_vi}
@@ -560,7 +512,7 @@ export default function AdminServicePackagesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="description">{language === "vi" ? "Mô tả (English)" : "Description (English)"}</Label>
+                <Label htmlFor="description">{t("description_english")}</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
@@ -569,9 +521,7 @@ export default function AdminServicePackagesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="description_vi">
-                  {language === "vi" ? "Mô tả (Tiếng Việt)" : "Description (Vietnamese)"}
-                </Label>
+                <Label htmlFor="description_vi">{t("description_vietnamese")}</Label>
                 <Textarea
                   id="description_vi"
                   value={formData.description_vi}
@@ -583,10 +533,10 @@ export default function AdminServicePackagesPage() {
 
             {/* Pricing */}
             <div className="border-t pt-4">
-              <h3 className="font-semibold mb-3">{language === "vi" ? "Giá cả" : "Pricing"}</h3>
+              <h3 className="font-semibold mb-3">{t("pricing")}</h3>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="price_monthly">{language === "vi" ? "Giá tháng ($)" : "Monthly Price ($)"}</Label>
+                  <Label htmlFor="price_monthly">{t("monthly_price_usd")}</Label>
                   <Input
                     id="price_monthly"
                     type="number"
@@ -595,7 +545,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="price_yearly">{language === "vi" ? "Giá năm ($)" : "Yearly Price ($)"}</Label>
+                  <Label htmlFor="price_yearly">{t("yearly_price_usd")}</Label>
                   <Input
                     id="price_yearly"
                     type="number"
@@ -604,7 +554,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="price_currency">{language === "vi" ? "Tiền tệ" : "Currency"}</Label>
+                  <Label htmlFor="price_currency">{t("currency")}</Label>
                   <Input
                     id="price_currency"
                     value={formData.price_currency}
@@ -616,10 +566,10 @@ export default function AdminServicePackagesPage() {
 
             {/* Limits */}
             <div className="border-t pt-4">
-              <h3 className="font-semibold mb-3">{language === "vi" ? "Giới hạn" : "Limits"}</h3>
+              <h3 className="font-semibold mb-3">{t("limits")}</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="max_users">{language === "vi" ? "Số người dùng tối đa" : "Max Users"}</Label>
+                  <Label htmlFor="max_users">{t("max_users")}</Label>
                   <Input
                     id="max_users"
                     type="number"
@@ -628,7 +578,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="max_facilities">{language === "vi" ? "Số cơ sở tối đa" : "Max Facilities"}</Label>
+                  <Label htmlFor="max_facilities">{t("max_facilities")}</Label>
                   <Input
                     id="max_facilities"
                     type="number"
@@ -637,7 +587,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="max_products">{language === "vi" ? "Số sản phẩm tối đa" : "Max Products"}</Label>
+                  <Label htmlFor="max_products">{t("max_products")}</Label>
                   <Input
                     id="max_products"
                     type="number"
@@ -646,7 +596,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="max_storage_gb">{language === "vi" ? "Dung lượng (GB)" : "Storage (GB)"}</Label>
+                  <Label htmlFor="max_storage_gb">{t("storage_gb")}</Label>
                   <Input
                     id="max_storage_gb"
                     type="number"
@@ -659,10 +609,10 @@ export default function AdminServicePackagesPage() {
 
             {/* Features */}
             <div className="border-t pt-4">
-              <h3 className="font-semibold mb-3">{language === "vi" ? "Tính năng" : "Features"}</h3>
+              <h3 className="font-semibold mb-3">{t("features")}</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="fda">{language === "vi" ? "Quản lý FDA" : "FDA Management"}</Label>
+                  <Label htmlFor="fda">{t("fda_management")}</Label>
                   <Switch
                     id="fda"
                     checked={formData.includes_fda_management}
@@ -670,7 +620,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="agent">{language === "vi" ? "Quản lý US Agent" : "Agent Management"}</Label>
+                  <Label htmlFor="agent">{t("agent_management")}</Label>
                   <Switch
                     id="agent"
                     checked={formData.includes_agent_management}
@@ -678,7 +628,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="cte">{language === "vi" ? "Theo dõi CTE" : "CTE Tracking"}</Label>
+                  <Label htmlFor="cte">{t("cte_tracking")}</Label>
                   <Switch
                     id="cte"
                     checked={formData.includes_cte_tracking}
@@ -686,7 +636,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="reporting">{language === "vi" ? "Báo cáo" : "Reporting"}</Label>
+                  <Label htmlFor="reporting">{t("reporting")}</Label>
                   <Switch
                     id="reporting"
                     checked={formData.includes_reporting}
@@ -694,7 +644,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="api">{language === "vi" ? "Truy cập API" : "API Access"}</Label>
+                  <Label htmlFor="api">{t("api_access")}</Label>
                   <Switch
                     id="api"
                     checked={formData.includes_api_access}
@@ -702,7 +652,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="branding">{language === "vi" ? "Thương hiệu riêng" : "Custom Branding"}</Label>
+                  <Label htmlFor="branding">{t("custom_branding")}</Label>
                   <Switch
                     id="branding"
                     checked={formData.includes_custom_branding}
@@ -710,7 +660,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="support">{language === "vi" ? "Hỗ trợ ưu tiên" : "Priority Support"}</Label>
+                  <Label htmlFor="support">{t("priority_support")}</Label>
                   <Switch
                     id="support"
                     checked={formData.includes_priority_support}
@@ -724,7 +674,7 @@ export default function AdminServicePackagesPage() {
             <div className="border-t pt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="is_active">{language === "vi" ? "Đang hoạt động" : "Active"}</Label>
+                  <Label htmlFor="is_active">{t("active")}</Label>
                   <Switch
                     id="is_active"
                     checked={formData.is_active}
@@ -732,7 +682,7 @@ export default function AdminServicePackagesPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="is_featured">{language === "vi" ? "Nổi bật" : "Featured"}</Label>
+                  <Label htmlFor="is_featured">{t("featured")}</Label>
                   <Switch
                     id="is_featured"
                     checked={formData.is_featured}
@@ -752,16 +702,10 @@ export default function AdminServicePackagesPage() {
                 resetForm()
               }}
             >
-              {language === "vi" ? "Hủy" : "Cancel"}
+              {t("cancel")}
             </Button>
             <Button onClick={editingPackage ? handleUpdatePackage : handleCreatePackage}>
-              {editingPackage
-                ? language === "vi"
-                  ? "Cập nhật"
-                  : "Update"
-                : language === "vi"
-                  ? "Tạo gói"
-                  : "Create Package"}
+              {editingPackage ? t("update") : t("create_package")}
             </Button>
           </DialogFooter>
         </DialogContent>

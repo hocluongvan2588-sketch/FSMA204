@@ -3,14 +3,34 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { LotsSearchFilter } from "@/components/lots-search-filter"
 
-export default async function LotsPage() {
+export default async function LotsPage({
+  searchParams,
+}: {
+  searchParams: { search?: string; status?: string; product?: string }
+}) {
   const supabase = await createClient()
+  const { search, status, product } = searchParams
 
-  const { data: lots } = await supabase
-    .from("traceability_lots")
-    .select("*, products(product_name, product_code), facilities(name)")
-    .order("created_at", { ascending: false })
+  let query = supabase.from("traceability_lots").select("*, products(product_name, product_code), facilities(name)")
+
+  if (search) {
+    query = query.or(`tlc.ilike.%${search}%,batch_number.ilike.%${search}%`)
+  }
+
+  if (status) {
+    query = query.eq("status", status)
+  }
+
+  if (product) {
+    query = query.eq("product_id", product)
+  }
+
+  const { data: lots } = await query.order("created_at", { ascending: false })
+
+  // Get unique products for filter
+  const { data: products } = await supabase.from("products").select("id, product_name").order("product_name")
 
   return (
     <div className="space-y-6">
@@ -24,6 +44,8 @@ export default async function LotsPage() {
         </Button>
       </div>
 
+      <LotsSearchFilter products={products || []} />
+
       {!lots || lots.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -35,8 +57,14 @@ export default async function LotsPage() {
                 d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
               />
             </svg>
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">Chưa có mã TLC nào</h3>
-            <p className="text-slate-500 mb-6">Tạo mã truy xuất đầu tiên cho lô hàng của bạn</p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              {search || status || product ? "Không tìm thấy kết quả" : "Chưa có mã TLC nào"}
+            </h3>
+            <p className="text-slate-500 mb-6">
+              {search || status || product
+                ? "Thử thay đổi bộ lọc của bạn"
+                : "Tạo mã truy xuất đầu tiên cho lô hàng của bạn"}
+            </p>
             <Button asChild>
               <Link href="/dashboard/lots/create">Tạo mã TLC mới</Link>
             </Button>
@@ -45,7 +73,10 @@ export default async function LotsPage() {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Danh sách mã TLC</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Danh sách mã TLC</CardTitle>
+              <Badge variant="secondary">{lots.length} kết quả</Badge>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="divide-y">

@@ -1,449 +1,244 @@
 "use client"
-
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, Building2, Activity, Shield, Database, CheckCircle2 } from "lucide-react"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Users, Shield, Activity, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useLanguage } from "@/contexts/language-context"
 
-interface SystemStats {
+interface AdminStats {
   totalUsers: number
-  totalCompanies: number
   totalFacilities: number
-  systemAdmins: number
-  companyAdmins: number
-  activeUsers: number
+  totalProducts: number
   totalSystemLogs: number
+  adminCount: number
 }
 
-interface RecentUser {
+interface UserProfile {
   id: string
   full_name: string
-  email: string
   role: string
   created_at: string
-  company_id: string | null
-  companies?: { name: string } | null
 }
 
-export default function AdminDashboardPage() {
-  const { language } = useLanguage()
-  const [stats, setStats] = useState<SystemStats>({
-    totalUsers: 0,
-    totalCompanies: 0,
-    totalFacilities: 0,
-    systemAdmins: 0,
-    companyAdmins: 0,
-    activeUsers: 0,
-    totalSystemLogs: 0,
-  })
-  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([])
+interface ProfileData {
+  role: string
+  company_id: string | null
+  companies: {
+    name: string
+  } | null
+}
+
+export default function AdminDashboard() {
+  const { locale, t } = useLanguage()
+  const router = useRouter()
+  const [profile, setProfile] = useState<ProfileData | null>(null)
+  const [stats, setStats] = useState<AdminStats | null>(null)
+  const [recentUsers, setRecentUsers] = useState<UserProfile[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [userRole, setUserRole] = useState<string>("")
-  const [currentUser, setCurrentUser] = useState<{ email: string; companyName: string | null }>({
-    email: "",
-    companyName: null,
-  })
 
   useEffect(() => {
-    loadSystemData()
+    loadData()
   }, [])
 
-  const loadSystemData = async () => {
+  const loadData = async () => {
     setIsLoading(true)
     const supabase = createClient()
 
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-      if (!user) {
-        console.error("[v0] No user found in admin page")
-        return
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, company_id, companies(name)")
-        .eq("id", user.id)
-        .single()
-
-      if (!profile) {
-        console.error("[v0] No profile found")
-        return
-      }
-
-      setUserRole(profile.role)
-      setCurrentUser({
-        email: user.email || "",
-        companyName: profile.companies?.name || null,
-      })
-      console.log("[v0] Admin page loaded with role:", profile.role, "email:", user.email)
-
-      // Load statistics
-      const [usersData, companiesData, facilitiesData, systemAdminsData, companyAdminsData, systemLogsData] =
-        await Promise.all([
-          supabase.from("profiles").select("id", { count: "exact", head: true }),
-          supabase.from("companies").select("id", { count: "exact", head: true }),
-          supabase.from("facilities").select("id", { count: "exact", head: true }),
-          supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "system_admin"),
-          supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "admin"),
-          supabase.from("system_logs").select("id", { count: "exact", head: true }),
-        ])
-
-      setStats({
-        totalUsers: usersData.count || 0,
-        totalCompanies: companiesData.count || 0,
-        totalFacilities: facilitiesData.count || 0,
-        systemAdmins: systemAdminsData.count || 0,
-        companyAdmins: companyAdminsData.count || 0,
-        activeUsers: usersData.count || 0,
-        totalSystemLogs: systemLogsData.count || 0,
-      })
-
-      // Load recent users
-      let recentUsersQuery = supabase
-        .from("profiles")
-        .select(
-          `
-          id,
-          full_name,
-          email,
-          role,
-          created_at,
-          company_id,
-          companies (name)
-        `,
-        )
-        .order("created_at", { ascending: false })
-        .limit(5)
-
-      // If company admin, only show users from their company
-      if (profile.role === "admin" && profile.company_id) {
-        recentUsersQuery = recentUsersQuery.eq("company_id", profile.company_id)
-      }
-
-      const { data: usersListData } = await recentUsersQuery
-
-      setRecentUsers(usersListData || [])
-      console.log("[v0] Admin data loaded successfully")
-    } catch (error) {
-      console.error("[v0] Error loading admin data:", error)
-    } finally {
-      setIsLoading(false)
+    if (!user) {
+      router.push("/auth/login")
+      return
     }
+
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("role, company_id, companies(name)")
+      .eq("id", user.id)
+      .single()
+
+    if (profileData) {
+      setProfile(profileData as ProfileData)
+
+      const isSystemAdminUser = profileData.role === "system_admin"
+
+      const response = await fetch("/api/admin/stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+
+      if (response.ok) {
+        const statsData = await response.json()
+        setStats(statsData.stats)
+        setRecentUsers(statsData.recentUsers || [])
+      }
+    }
+
+    setIsLoading(false)
   }
 
-  const isSystemAdmin = userRole === "system_admin"
-
-  const statCards = [
-    {
-      title: language === "vi" ? "Tổng người dùng" : "Total Users",
-      value: stats.totalUsers,
-      icon: Users,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
-      link: "/admin/users",
-      description: language === "vi" ? "Tài khoản trong hệ thống" : "Accounts in system",
-    },
-    {
-      title: language === "vi" ? "Công ty" : "Companies",
-      value: stats.totalCompanies,
-      icon: Building2,
-      color: "text-green-600",
-      bgColor: "bg-green-50",
-      link: "/admin/companies",
-      description: language === "vi" ? "Tổ chức đăng ký" : "Registered organizations",
-      systemAdminOnly: true,
-    },
-    {
-      title: language === "vi" ? "Quản trị viên" : "Administrators",
-      value: stats.companyAdmins + stats.systemAdmins,
-      icon: Shield,
-      color: "text-purple-600",
-      bgColor: "bg-purple-50",
-      description: language === "vi" ? `${stats.systemAdmins} hệ thống` : `${stats.systemAdmins} system`,
-    },
-    {
-      title: language === "vi" ? "Nhật ký hệ thống" : "System Logs",
-      value: stats.totalSystemLogs,
-      icon: Activity,
-      color: "text-orange-600",
-      bgColor: "bg-orange-50",
-      link: "/admin/system-logs",
-      description: language === "vi" ? "Sự kiện ghi nhận" : "Recorded events",
-    },
-  ]
-
-  const getRoleBadgeColor = (role: string) => {
+  const getRoleBadge = (role: string) => {
     const colors: Record<string, string> = {
-      system_admin: "bg-purple-100 text-purple-700 border-purple-200",
-      admin: "bg-red-100 text-red-700 border-red-200",
-      manager: "bg-blue-100 text-blue-700 border-blue-200",
-      operator: "bg-green-100 text-green-700 border-green-200",
-      viewer: "bg-slate-100 text-slate-700 border-slate-200",
+      system_admin: "bg-purple-100 text-purple-700 border-purple-300",
+      admin: "bg-red-100 text-red-700",
+      manager: "bg-blue-100 text-blue-700",
+      operator: "bg-green-100 text-green-700",
+      viewer: "bg-gray-100 text-gray-700",
     }
-    return colors[role] || "bg-slate-100 text-slate-700"
-  }
-
-  const getRoleDisplayName = (role: string) => {
-    if (language === "vi") {
-      const names: Record<string, string> = {
-        system_admin: "System Admin",
-        admin: "Admin",
-        manager: "Quản lý",
-        operator: "Nhân viên",
-        viewer: "Người xem",
-      }
-      return names[role] || role
-    }
-    return role.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())
+    return colors[role] || colors.viewer
   }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="text-center space-y-4">
-          <div className="h-16 w-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto animate-pulse">
-            <Database className="h-8 w-8 text-purple-600" />
-          </div>
-          <p className="text-lg font-medium">{language === "vi" ? "Đang tải dữ liệu..." : "Loading data..."}</p>
+      <div className="p-8 space-y-6">
+        <Skeleton className="h-12 w-1/3" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
+    <div className="p-8 space-y-6">
       <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-4xl font-bold text-slate-900">
-              {language === "vi" ? "Bảng điều khiển quản trị" : "Administration Dashboard"}
-            </h1>
-            <Badge className={isSystemAdmin ? "bg-purple-600" : "bg-red-600"}>
-              {isSystemAdmin ? (language === "vi" ? "HỆ THỐNG" : "SYSTEM") : language === "vi" ? "CÔNG TY" : "COMPANY"}
-            </Badge>
-          </div>
-          <p className="text-slate-500 text-lg">
-            {isSystemAdmin
-              ? language === "vi"
-                ? "Quản lý toàn bộ hệ thống và tổ chức"
-                : "Manage entire system and organizations"
-              : language === "vi"
-                ? "Quản lý người dùng và cài đặt công ty"
-                : "Manage users and company settings"}
-          </p>
-          <div className="mt-2 flex items-center gap-4 text-sm text-slate-600">
-            {currentUser.email && (
-              <span className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                {currentUser.email}
-              </span>
-            )}
-            {currentUser.companyName && (
-              <span className="flex items-center gap-1">
-                <Building2 className="h-4 w-4" />
-                {currentUser.companyName}
-              </span>
-            )}
-            {!currentUser.companyName && !isSystemAdmin && (
-              <span className="flex items-center gap-1 text-orange-600">
-                <Building2 className="h-4 w-4" />
-                {language === "vi" ? "Chưa có công ty" : "No company assigned"}
-              </span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{t("admin.overview.title")}</h1>
+            {profile?.role === "system_admin" ? (
+              <Badge className="bg-purple-600 text-white">{t("admin.overview.systemBadge")}</Badge>
+            ) : (
+              <Badge className="bg-red-600 text-white">{t("admin.overview.companyBadge")}</Badge>
             )}
           </div>
+          <p className="text-muted-foreground">{t("admin.overview.description")}</p>
+          {profile?.companies && (
+            <div className="flex items-center gap-2 text-sm mt-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{(profile.companies as any).name}</span>
+            </div>
+          )}
+          {!profile?.company_id && profile?.role === "admin" && (
+            <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              {t("admin.companies.noCompanyAssigned")}
+            </div>
+          )}
         </div>
-        <Button onClick={loadSystemData} variant="outline" className="bg-transparent">
-          <Activity className="h-4 w-4 mr-2" />
-          {language === "vi" ? "Làm mới" : "Refresh"}
+        <Button onClick={loadData} variant="outline" size="sm">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          {t("common.actions.refresh")}
         </Button>
       </div>
 
-      {/* System Health - Only for System Admin */}
-      {isSystemAdmin && (
-        <Card className="border-l-4 border-l-green-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              {language === "vi" ? "Trạng thái hệ thống" : "System Health"}
-            </CardTitle>
-            <CardDescription>
-              {language === "vi" ? "Tất cả dịch vụ hoạt động bình thường" : "All services operational"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-200">
-                <div className="flex items-center gap-3">
-                  <Database className="h-8 w-8 text-green-600" />
-                  <div>
-                    <p className="font-medium text-slate-900">{language === "vi" ? "Cơ sở dữ liệu" : "Database"}</p>
-                    <p className="text-sm text-slate-600">Supabase PostgreSQL</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-600">{language === "vi" ? "Hoạt động" : "Online"}</Badge>
-              </div>
-              <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-200">
-                <div className="flex items-center gap-3">
-                  <Activity className="h-8 w-8 text-green-600" />
-                  <div>
-                    <p className="font-medium text-slate-900">{language === "vi" ? "Dịch vụ API" : "API Service"}</p>
-                    <p className="text-sm text-slate-600">Next.js Server</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-600">{language === "vi" ? "Hoạt động" : "Online"}</Badge>
-              </div>
-              <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-200">
-                <div className="flex items-center gap-3">
-                  <Shield className="h-8 w-8 text-green-600" />
-                  <div>
-                    <p className="font-medium text-slate-900">{language === "vi" ? "Xác thực" : "Authentication"}</p>
-                    <p className="text-sm text-slate-600">Supabase Auth</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-600">{language === "vi" ? "Hoạt động" : "Online"}</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {profile?.role === "system_admin" && (
+        <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-3 rounded-lg flex items-start gap-3">
+          <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div>
+            <p className="font-semibold">{t("admin.common.systemAdminMode")}</p>
+            <p className="text-sm">{t("admin.common.systemAdminDesc")}</p>
+          </div>
+        </div>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards
-          .filter((stat) => !stat.systemAdminOnly || isSystemAdmin)
-          .map((stat, index) => (
-            <Card key={index} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-slate-600">{stat.title}</CardTitle>
-                <div className={`p-3 rounded-xl ${stat.bgColor}`}>
-                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="text-3xl font-bold text-slate-900">{stat.value.toLocaleString()}</div>
-                  <p className="text-xs text-slate-500">{stat.description}</p>
-                  {stat.link && (
-                    <Link href={stat.link}>
-                      <Button variant="link" className="p-0 h-auto text-blue-600 hover:text-blue-700">
-                        {language === "vi" ? "Xem chi tiết" : "View details"} →
-                      </Button>
-                    </Link>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">{t("admin.overview.stats.totalUsers")}</CardTitle>
+            <Users className="h-5 w-5 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats?.totalUsers || 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">{t("admin.overview.stats.accountsInSystem")}</p>
+            <Button variant="link" className="px-0 mt-2" onClick={() => router.push("/admin/users")}>
+              {t("common.actions.viewDetails")} →
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">{t("admin.overview.stats.administrators")}</CardTitle>
+            <Shield className="h-5 w-5 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats?.adminCount || 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {profile?.role === "system_admin"
+                ? t("admin.overview.stats.systemAdminCount", { count: 1 })
+                : t("admin.overview.stats.systemAdminCount", { count: 0 })}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">{t("admin.systemLogs.title")}</CardTitle>
+            <Activity className="h-5 w-5 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats?.totalSystemLogs || 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">{t("admin.systemLogs.recordedEvents")}</p>
+            <Button variant="link" className="px-0 mt-2" onClick={() => router.push("/admin/system-logs")}>
+              {t("common.actions.viewDetails")} →
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Recent Users */}
       <Card>
         <CardHeader>
-          <CardTitle>{language === "vi" ? "Người dùng mới nhất" : "Recent Users"}</CardTitle>
-          <CardDescription>
-            {language === "vi" ? "Tài khoản đăng ký gần đây" : "Recently registered accounts"}
-          </CardDescription>
+          <CardTitle>{t("admin.overview.recentUsers.title")}</CardTitle>
+          <CardDescription>{t("admin.overview.recentUsers.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           {recentUsers.length === 0 ? (
-            <div className="text-center py-12 space-y-4">
-              <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto">
-                <Users className="h-8 w-8 text-slate-400" />
-              </div>
-              <p className="text-slate-600">{language === "vi" ? "Chưa có người dùng" : "No users yet"}</p>
+            <div className="text-center py-12">
+              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">{t("admin.users.noUsers")}</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {recentUsers.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex items-center justify-between p-4 rounded-lg border bg-slate-50 hover:bg-slate-100 transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-600 to-teal-600 flex items-center justify-center text-white font-semibold text-lg">
-                      {user.full_name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || "U"}
-                    </div>
-                    <div>
-                      <p className="font-medium text-slate-900">{user.full_name || user.email || "N/A"}</p>
-                      <p className="text-sm text-slate-600">{user.email}</p>
-                      {user.companies?.name && <p className="text-xs text-slate-500 mt-1">{user.companies.name}</p>}
-                    </div>
+                <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium">{user.full_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {t("admin.overview.recentUsers.joined")} {new Date(user.created_at).toLocaleDateString(locale)}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Badge className={getRoleBadgeColor(user.role)}>{getRoleDisplayName(user.role)}</Badge>
-                    <p className="text-xs text-slate-500">{new Date(user.created_at).toLocaleDateString()}</p>
-                  </div>
+                  <Badge className={getRoleBadge(user.role)}>{user.role}</Badge>
                 </div>
               ))}
             </div>
           )}
-          <div className="mt-4 pt-4 border-t">
-            <Link href="/admin/users">
-              <Button variant="outline" className="w-full bg-transparent">
-                <Users className="h-4 w-4 mr-2" />
-                {language === "vi" ? "Xem tất cả người dùng" : "View all users"}
-              </Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{language === "vi" ? "Thao tác nhanh" : "Quick Actions"}</CardTitle>
-          <CardDescription>
-            {language === "vi" ? "Các chức năng quản trị chính" : "Primary admin functions"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link href="/admin/users">
-              <Button variant="outline" className="w-full h-auto py-6 flex flex-col items-start gap-2 bg-transparent">
-                <Users className="h-6 w-6 text-blue-600" />
-                <div className="text-left">
-                  <div className="font-semibold">{language === "vi" ? "Quản lý người dùng" : "Manage Users"}</div>
-                  <div className="text-xs text-slate-500">
-                    {language === "vi" ? "Thêm, sửa, xóa tài khoản" : "Add, edit, remove accounts"}
-                  </div>
-                </div>
-              </Button>
-            </Link>
-
-            {isSystemAdmin && (
-              <Link href="/admin/companies">
-                <Button variant="outline" className="w-full h-auto py-6 flex flex-col items-start gap-2 bg-transparent">
-                  <Building2 className="h-6 w-6 text-green-600" />
-                  <div className="text-left">
-                    <div className="font-semibold">{language === "vi" ? "Quản lý công ty" : "Manage Companies"}</div>
-                    <div className="text-xs text-slate-500">
-                      {language === "vi" ? "Xem và chỉnh sửa tổ chức" : "View and edit organizations"}
-                    </div>
-                  </div>
-                </Button>
-              </Link>
-            )}
-
-            <Link href="/admin/system-logs">
-              <Button variant="outline" className="w-full h-auto py-6 flex flex-col items-start gap-2 bg-transparent">
-                <Activity className="h-6 w-6 text-orange-600" />
-                <div className="text-left">
-                  <div className="font-semibold">{language === "vi" ? "Xem nhật ký" : "View Logs"}</div>
-                  <div className="text-xs text-slate-500">
-                    {language === "vi" ? "Theo dõi hoạt động hệ thống" : "Track system activity"}
-                  </div>
-                </div>
-              </Button>
-            </Link>
-          </div>
+          <Button variant="outline" className="w-full mt-4 bg-transparent" onClick={() => router.push("/admin/users")}>
+            <Users className="h-4 w-4 mr-2" />
+            {t("admin.users.viewAll")}
+          </Button>
         </CardContent>
       </Card>
     </div>

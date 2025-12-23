@@ -51,7 +51,7 @@ interface UserActivity {
 }
 
 export default function SystemLogsPage() {
-  const { language } = useLanguage()
+  const { locale, t } = useLanguage()
   const [cteEvents, setCteEvents] = useState<SystemLog[]>([])
   const [auditReports, setAuditReports] = useState<AuditReport[]>([])
   const [userActivities, setUserActivities] = useState<UserActivity[]>([])
@@ -190,7 +190,7 @@ export default function SystemLogsPage() {
       transformation: { vi: "Chế biến", en: "Transformation" },
       shipping: { vi: "Vận chuyển", en: "Shipping" },
     }
-    return names[type]?.[language] || type
+    return names[type]?.[locale] || type
   }
 
   const getEventTypeColor = (type: string) => {
@@ -230,7 +230,6 @@ export default function SystemLogsPage() {
   })
 
   const handleExportLogs = () => {
-    // Prepare CSV data
     const csvContent = [
       ["Date", "Event Type", "Description", "Facility", "TLC", "Responsible Person"].join(","),
       ...filteredEvents.map((event) =>
@@ -247,7 +246,6 @@ export default function SystemLogsPage() {
       ),
     ].join("\n")
 
-    // Create download
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
     const link = document.createElement("a")
     link.href = URL.createObjectURL(blob)
@@ -262,7 +260,7 @@ export default function SystemLogsPage() {
           <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto animate-pulse">
             <Activity className="h-8 w-8 text-blue-600" />
           </div>
-          <p className="text-lg font-medium">{language === "vi" ? "Đang tải nhật ký..." : "Loading logs..."}</p>
+          <p className="text-lg font-medium">{t("admin.systemLogs.status.loading")}</p>
         </div>
       </div>
     )
@@ -273,23 +271,17 @@ export default function SystemLogsPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-slate-900">
-            {language === "vi" ? "Nhật ký Hệ thống" : "System Logs"}
-          </h1>
-          <p className="text-slate-500 mt-2 text-lg">
-            {language === "vi"
-              ? "Theo dõi và phân tích toàn bộ hoạt động trong hệ thống"
-              : "Monitor and analyze all system activities"}
-          </p>
+          <h1 className="text-4xl font-bold text-slate-900">{t("admin.systemLogs.title")}</h1>
+          <p className="text-slate-500 mt-2 text-lg">{t("admin.systemLogs.subtitle")}</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={loadSystemLogs} className="bg-transparent">
             <RefreshCw className="h-4 w-4 mr-2" />
-            {language === "vi" ? "Làm mới" : "Refresh"}
+            {t("admin.systemLogs.refresh")}
           </Button>
           <Button variant="outline" onClick={handleExportLogs} className="bg-transparent">
             <Download className="h-4 w-4 mr-2" />
-            {language === "vi" ? "Xuất CSV" : "Export CSV"}
+            {t("admin.systemLogs.export")}
           </Button>
         </div>
       </div>
@@ -299,56 +291,48 @@ export default function SystemLogsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-slate-600">
-              {language === "vi" ? "Sự kiện CTE" : "CTE Events"}
+              {t("admin.systemLogs.stats.cteEvents")}
             </CardTitle>
             <Activity className="h-5 w-5 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{cteEvents.length}</div>
             <p className="text-xs text-slate-500 mt-1">
-              {language === "vi" ? `Trong ${dateFilter}` : `In ${dateFilter}`}
+              {t("admin.common.inTimeRange")} {dateFilter}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              {language === "vi" ? "Kiểm toán" : "Audits"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-600">{t("admin.systemLogs.stats.audits")}</CardTitle>
             <CheckCircle className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{auditReports.length}</div>
-            <p className="text-xs text-slate-500 mt-1">
-              {language === "vi" ? "Báo cáo tuân thủ" : "Compliance reports"}
-            </p>
+            <p className="text-xs text-slate-500 mt-1">{t("admin.systemLogs.stats.complianceReports")}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              {language === "vi" ? "Người dùng mới" : "New Users"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-600">{t("admin.systemLogs.stats.newUsers")}</CardTitle>
             <User className="h-5 w-5 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{userActivities.length}</div>
-            <p className="text-xs text-slate-500 mt-1">{language === "vi" ? "Đăng ký" : "Registrations"}</p>
+            <p className="text-xs text-slate-500 mt-1">{t("admin.systemLogs.stats.registrations")}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              {language === "vi" ? "Trạng thái" : "Status"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-600">{t("admin.systemLogs.stats.status")}</CardTitle>
             <Database className="h-5 w-5 text-teal-600" />
           </CardHeader>
           <CardContent>
-            <Badge className="bg-green-600 text-white">{language === "vi" ? "Hoạt động" : "Active"}</Badge>
-            <p className="text-xs text-slate-500 mt-2">{language === "vi" ? "Hệ thống ổn định" : "System stable"}</p>
+            <Badge className="bg-green-600 text-white">{t("admin.systemLogs.status.active")}</Badge>
+            <p className="text-xs text-slate-500 mt-2">{t("admin.systemLogs.stats.systemStable")}</p>
           </CardContent>
         </Card>
       </div>
@@ -358,50 +342,46 @@ export default function SystemLogsPage() {
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">{language === "vi" ? "Khoảng thời gian" : "Time Range"}</label>
+              <label className="text-sm font-medium">{t("admin.systemLogs.filters.timeRange")}</label>
               <Select value={dateFilter} onValueChange={setDateFilter}>
                 <SelectTrigger>
                   <Calendar className="h-4 w-4 mr-2" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="24hours">{language === "vi" ? "24 giờ qua" : "Last 24 hours"}</SelectItem>
-                  <SelectItem value="7days">{language === "vi" ? "7 ngày qua" : "Last 7 days"}</SelectItem>
-                  <SelectItem value="30days">{language === "vi" ? "30 ngày qua" : "Last 30 days"}</SelectItem>
-                  <SelectItem value="all">{language === "vi" ? "Tất cả" : "All time"}</SelectItem>
+                  <SelectItem value="24hours">{t("admin.systemLogs.filters.last24Hours")}</SelectItem>
+                  <SelectItem value="7days">{t("admin.systemLogs.filters.last7Days")}</SelectItem>
+                  <SelectItem value="30days">{t("admin.systemLogs.filters.last30Days")}</SelectItem>
+                  <SelectItem value="all">{t("admin.systemLogs.filters.allTime")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">{language === "vi" ? "Loại sự kiện" : "Event Type"}</label>
+              <label className="text-sm font-medium">{t("admin.systemLogs.filters.eventType")}</label>
               <Select value={filterType} onValueChange={setFilterType}>
                 <SelectTrigger>
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{language === "vi" ? "Tất cả" : "All Events"}</SelectItem>
-                  <SelectItem value="harvest">{language === "vi" ? "Thu hoạch" : "Harvest"}</SelectItem>
-                  <SelectItem value="cooling">{language === "vi" ? "Làm lạnh" : "Cooling"}</SelectItem>
-                  <SelectItem value="packing">{language === "vi" ? "Đóng gói" : "Packing"}</SelectItem>
-                  <SelectItem value="receiving">{language === "vi" ? "Tiếp nhận" : "Receiving"}</SelectItem>
-                  <SelectItem value="transformation">{language === "vi" ? "Chế biến" : "Transformation"}</SelectItem>
-                  <SelectItem value="shipping">{language === "vi" ? "Vận chuyển" : "Shipping"}</SelectItem>
+                  <SelectItem value="all">{t("admin.systemLogs.filters.allEvents")}</SelectItem>
+                  <SelectItem value="harvest">{getEventTypeName("harvest")}</SelectItem>
+                  <SelectItem value="cooling">{getEventTypeName("cooling")}</SelectItem>
+                  <SelectItem value="packing">{getEventTypeName("packing")}</SelectItem>
+                  <SelectItem value="receiving">{getEventTypeName("receiving")}</SelectItem>
+                  <SelectItem value="transformation">{getEventTypeName("transformation")}</SelectItem>
+                  <SelectItem value="shipping">{getEventTypeName("shipping")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="md:col-span-2 space-y-2">
-              <label className="text-sm font-medium">{language === "vi" ? "Tìm kiếm" : "Search"}</label>
+              <label className="text-sm font-medium">{t("admin.systemLogs.filters.search")}</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
-                  placeholder={
-                    language === "vi"
-                      ? "Tìm theo TLC, mô tả, người phụ trách..."
-                      : "Search by TLC, description, person..."
-                  }
+                  placeholder={t("admin.systemLogs.filters.searchPlaceholder")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -416,25 +396,22 @@ export default function SystemLogsPage() {
       <Tabs defaultValue="events" className="space-y-6">
         <TabsList className="grid w-full grid-cols-3 lg:w-auto">
           <TabsTrigger value="events">
-            {language === "vi" ? "Sự kiện CTE" : "CTE Events"} ({filteredEvents.length})
+            {t("admin.systemLogs.tabs.events")} ({filteredEvents.length})
           </TabsTrigger>
           <TabsTrigger value="audits">
-            {language === "vi" ? "Kiểm toán" : "Audits"} ({auditReports.length})
+            {t("admin.systemLogs.tabs.audits")} ({auditReports.length})
           </TabsTrigger>
           <TabsTrigger value="users">
-            {language === "vi" ? "Người dùng" : "Users"} ({userActivities.length})
+            {t("admin.systemLogs.tabs.users")} ({userActivities.length})
           </TabsTrigger>
         </TabsList>
 
-        {/* CTE Events Tab */}
         <TabsContent value="events" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>{language === "vi" ? "Nhật ký Sự kiện" : "Event Logs"}</CardTitle>
+              <CardTitle>{t("admin.systemLogs.eventLog.title")}</CardTitle>
               <CardDescription>
-                {language === "vi"
-                  ? `${filteredEvents.length} sự kiện được tìm thấy`
-                  : `${filteredEvents.length} events found`}
+                {filteredEvents.length} {t("admin.systemLogs.eventLog.found")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -443,7 +420,7 @@ export default function SystemLogsPage() {
                   <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto">
                     <Activity className="h-8 w-8 text-slate-400" />
                   </div>
-                  <p className="text-slate-600">{language === "vi" ? "Không có sự kiện nào" : "No events found"}</p>
+                  <p className="text-slate-600">{t("admin.systemLogs.eventLog.noEvents")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -481,12 +458,8 @@ export default function SystemLogsPage() {
                         </div>
                       </div>
                       <div className="text-right text-xs text-slate-500 flex-shrink-0">
-                        <div>
-                          {new Date(event.event_date).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}
-                        </div>
-                        <div>
-                          {new Date(event.event_date).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}
-                        </div>
+                        <div>{new Date(event.event_date).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US")}</div>
+                        <div>{new Date(event.event_date).toLocaleTimeString(locale === "vi" ? "vi-VN" : "en-US")}</div>
                       </div>
                     </div>
                   ))}
@@ -496,39 +469,39 @@ export default function SystemLogsPage() {
           </Card>
         </TabsContent>
 
-        {/* Audit Reports Tab */}
         <TabsContent value="audits" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>{language === "vi" ? "Báo cáo Kiểm toán" : "Audit Reports"}</CardTitle>
-              <CardDescription>
-                {language === "vi" ? "Lịch sử kiểm toán tuân thủ" : "Compliance audit history"}
-              </CardDescription>
+              <CardTitle>{t("admin.systemLogs.auditReport.title")}</CardTitle>
+              <CardDescription>{t("admin.systemLogs.auditReport.subtitle")}</CardDescription>
             </CardHeader>
             <CardContent>
               {auditReports.length === 0 ? (
                 <div className="text-center py-12">
                   <CheckCircle className="h-16 w-16 text-slate-300 mx-auto mb-4" />
-                  <p className="text-slate-600">{language === "vi" ? "Chưa có báo cáo" : "No reports yet"}</p>
+                  <p className="text-slate-600">{t("admin.systemLogs.auditReport.noReports")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {auditReports.map((report) => (
-                    <div key={report.id} className="flex items-center justify-between p-4 rounded-lg border">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-mono font-semibold">{report.report_number}</span>
+                    <div key={report.id} className="flex items-start gap-4 p-4 rounded-lg border bg-slate-50">
+                      <CheckCircle className="h-5 w-5 text-green-600 mt-1" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium">{report.report_number}</span>
                           <Badge className={getComplianceColor(report.compliance_status)}>
-                            {report.compliance_status.replace("_", " ").toUpperCase()}
+                            {report.compliance_status}
                           </Badge>
                         </div>
-                        <p className="text-sm text-slate-600">
-                          {language === "vi" ? "Kiểm toán viên" : "Auditor"}: {report.auditor_name}
+                        {report.facilities?.name && (
+                          <p className="text-sm text-slate-600 mb-1">{report.facilities.name}</p>
+                        )}
+                        <p className="text-xs text-slate-500">
+                          {t("admin.systemLogs.auditReport.by")} {report.auditor_name}
                         </p>
-                        {report.facilities?.name && <p className="text-xs text-slate-500">{report.facilities.name}</p>}
                       </div>
-                      <div className="text-sm text-slate-500">
-                        {new Date(report.audit_date).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}
+                      <div className="text-right text-xs text-slate-500">
+                        {new Date(report.audit_date).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US")}
                       </div>
                     </div>
                   ))}
@@ -538,36 +511,34 @@ export default function SystemLogsPage() {
           </Card>
         </TabsContent>
 
-        {/* User Activity Tab */}
         <TabsContent value="users" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>{language === "vi" ? "Hoạt động Người dùng" : "User Activity"}</CardTitle>
-              <CardDescription>
-                {language === "vi" ? "Người dùng mới đăng ký" : "New user registrations"}
-              </CardDescription>
+              <CardTitle>{t("admin.systemLogs.userActivity.title")}</CardTitle>
+              <CardDescription>{t("admin.systemLogs.userActivity.subtitle")}</CardDescription>
             </CardHeader>
             <CardContent>
               {userActivities.length === 0 ? (
                 <div className="text-center py-12">
                   <User className="h-16 w-16 text-slate-300 mx-auto mb-4" />
-                  <p className="text-slate-600">{language === "vi" ? "Chưa có hoạt động" : "No activity yet"}</p>
+                  <p className="text-slate-600">{t("admin.systemLogs.userActivity.noActivity")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {userActivities.map((user) => (
-                    <div key={user.id} className="flex items-center justify-between p-4 rounded-lg border">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-teal-600 flex items-center justify-center text-white font-semibold">
-                          {user.full_name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-medium">{user.full_name}</p>
-                          <p className="text-xs text-slate-500 capitalize">{user.role}</p>
-                        </div>
+                    <div key={user.id} className="flex items-center gap-4 p-4 rounded-lg border bg-slate-50">
+                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <User className="h-5 w-5 text-blue-600" />
                       </div>
-                      <div className="text-sm text-slate-500">
-                        {new Date(user.created_at).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}
+                      <div className="flex-1">
+                        <p className="font-medium">{user.full_name}</p>
+                        <p className="text-sm text-slate-500">
+                          {t("admin.systemLogs.userActivity.role")}: {user.role}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs text-slate-500">
+                        <div>{t("admin.systemLogs.userActivity.joined")}</div>
+                        <div>{new Date(user.created_at).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US")}</div>
                       </div>
                     </div>
                   ))}

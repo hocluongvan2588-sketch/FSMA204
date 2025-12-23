@@ -3,14 +3,45 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { ReportsSearchFilter } from "@/components/reports-search-filter"
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: {
+    search?: string
+    compliance_status?: string
+    report_type?: string
+    audit_date_from?: string
+    audit_date_to?: string
+  }
+}) {
   const supabase = await createClient()
+  const { search, compliance_status, report_type, audit_date_from, audit_date_to } = searchParams
 
-  const { data: reports } = await supabase
-    .from("audit_reports")
-    .select("*, facilities(name)")
-    .order("audit_date", { ascending: false })
+  let query = supabase.from("audit_reports").select("*, facilities(name)")
+
+  if (search) {
+    query = query.or(`report_number.ilike.%${search}%,auditor_name.ilike.%${search}%`)
+  }
+
+  if (compliance_status) {
+    query = query.eq("compliance_status", compliance_status)
+  }
+
+  if (report_type) {
+    query = query.eq("report_type", report_type)
+  }
+
+  if (audit_date_from) {
+    query = query.gte("audit_date", audit_date_from)
+  }
+
+  if (audit_date_to) {
+    query = query.lte("audit_date", audit_date_to)
+  }
+
+  const { data: reports } = await query.order("audit_date", { ascending: false })
 
   return (
     <div className="space-y-6">
@@ -28,6 +59,8 @@ export default async function ReportsPage() {
           </Button>
         </div>
       </div>
+
+      <ReportsSearchFilter />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>

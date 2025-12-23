@@ -25,7 +25,24 @@ export default function LoginPage() {
 
   useEffect(() => {
     const urlError = searchParams.get("error")
-    if (urlError === "profile_missing") {
+    if (urlError === "rls_recursion") {
+      setError(
+        "Hệ thống cơ sở dữ liệu cần được cấu hình lại. Vui lòng liên hệ quản trị viên để khắc phục vấn đề RLS policies.",
+      )
+      toast({
+        variant: "destructive",
+        title: "⚠️ Lỗi cấu hình RLS",
+        description: "Cần chạy script 016_ultimate_rls_fix.sql để khắc phục.",
+        duration: 10000,
+      })
+    } else if (urlError === "profile_creation_failed") {
+      setError("Không thể tạo hồ sơ người dùng. Vui lòng liên hệ quản trị viên.")
+      toast({
+        variant: "destructive",
+        title: "⚠️ Lỗi tạo hồ sơ",
+        description: "Hệ thống không thể tạo hồ sơ người dùng. Vui lòng liên hệ quản trị viên.",
+      })
+    } else if (urlError === "profile_missing") {
       setError("Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại hoặc liên hệ quản trị viên.")
       toast({
         variant: "destructive",

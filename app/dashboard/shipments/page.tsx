@@ -3,14 +3,37 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { ShipmentsSearchFilter } from "@/components/shipments-search-filter"
 
-export default async function ShipmentsPage() {
+export default async function ShipmentsPage({
+  searchParams,
+}: {
+  searchParams: { search?: string; status?: string; shipment_date_from?: string; shipment_date_to?: string }
+}) {
   const supabase = await createClient()
+  const { search, status, shipment_date_from, shipment_date_to } = searchParams
 
-  const { data: shipments } = await supabase
+  let query = supabase
     .from("shipments")
     .select("*, traceability_lots(tlc, products(product_name)), facilities!shipments_from_facility_id_fkey(name)")
-    .order("shipment_date", { ascending: false })
+
+  if (search) {
+    query = query.or(`shipment_number.ilike.%${search}%,destination_address.ilike.%${search}%`)
+  }
+
+  if (status) {
+    query = query.eq("status", status)
+  }
+
+  if (shipment_date_from) {
+    query = query.gte("shipment_date", shipment_date_from)
+  }
+
+  if (shipment_date_to) {
+    query = query.lte("shipment_date", shipment_date_to)
+  }
+
+  const { data: shipments } = await query.order("shipment_date", { ascending: false })
 
   return (
     <div className="space-y-6">
@@ -24,6 +47,8 @@ export default async function ShipmentsPage() {
         </Button>
       </div>
 
+      <ShipmentsSearchFilter />
+
       {!shipments || shipments.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -35,8 +60,16 @@ export default async function ShipmentsPage() {
                 d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"
               />
             </svg>
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">Chưa có vận chuyển nào</h3>
-            <p className="text-slate-500 mb-6">Tạo lô hàng vận chuyển đầu tiên</p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              {search || status || shipment_date_from || shipment_date_to
+                ? "Không tìm thấy kết quả"
+                : "Chưa có vận chuyển nào"}
+            </h3>
+            <p className="text-slate-500 mb-6">
+              {search || status || shipment_date_from || shipment_date_to
+                ? "Thử thay đổi bộ lọc của bạn"
+                : "Tạo lô hàng vận chuyển đầu tiên"}
+            </p>
             <Button asChild>
               <Link href="/dashboard/shipments/create">Tạo vận chuyển mới</Link>
             </Button>

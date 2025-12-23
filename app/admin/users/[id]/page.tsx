@@ -60,37 +60,46 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
 
   const loadUserData = async () => {
     setIsLoading(true)
-    const supabase = createClient()
 
-    // Load profile from profiles table
-    const { data: profileData, error: profileError } = await supabase.from("profiles").select("*").eq("id", id).single()
+    try {
+      const response = await fetch(`/api/admin/users/${id}`)
 
-    if (profileError) {
+      if (!response.ok) {
+        const errorData = await response.json()
+        toast({
+          variant: "destructive",
+          title: "Lỗi tải thông tin",
+          description: errorData.error || "Không thể tải thông tin người dùng",
+        })
+        setIsLoading(false)
+        return
+      }
+
+      const data = await response.json()
+
+      setProfile(data.profile)
+      setFullName(data.profile.full_name)
+      setRole(data.profile.role)
+      setPhone(data.profile.phone || "")
+      setCompanyId(data.profile.company_id || "")
+      setLanguagePreference(data.profile.language_preference || "vi")
+
+      setAuthData({
+        email: data.auth.email,
+        created_at: data.profile.created_at,
+        last_sign_in_at: data.auth.last_sign_in_at,
+      })
+
+      setIsLoading(false)
+    } catch (error: any) {
+      console.error("[v0] Error loading user data:", error)
       toast({
         variant: "destructive",
-        title: "❌ Lỗi tải thông tin",
-        description: "Không thể tải thông tin người dùng",
+        title: "Lỗi tải thông tin",
+        description: error.message || "Không thể tải thông tin người dùng",
       })
       setIsLoading(false)
-      return
     }
-
-    setProfile(profileData)
-    setFullName(profileData.full_name)
-    setRole(profileData.role)
-    setPhone(profileData.phone || "")
-    setCompanyId(profileData.company_id || "")
-    setLanguagePreference(profileData.language_preference || "vi")
-
-    // Load email from auth.users (requires admin client or service role)
-    // For now, we'll use a placeholder - in production, use admin API
-    setAuthData({
-      email: "Loading...",
-      created_at: profileData.created_at,
-      last_sign_in_at: null,
-    })
-
-    setIsLoading(false)
   }
 
   const loadCompanies = async () => {
@@ -103,43 +112,47 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
     if (!fullName.trim()) {
       toast({
         variant: "destructive",
-        title: "❌ Lỗi",
+        title: "Lỗi",
         description: "Vui lòng nhập họ tên",
       })
       return
     }
 
     setIsSaving(true)
-    const supabase = createClient()
 
-    const updates: any = {
-      full_name: fullName,
-      role: role,
-      phone: phone || null,
-      company_id: companyId || null,
-      language_preference: languagePreference,
-      updated_at: new Date().toISOString(),
-    }
+    try {
+      const response = await fetch(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: fullName,
+          role: role,
+          phone: phone || null,
+          company_id: companyId || null,
+          language_preference: languagePreference,
+        }),
+      })
 
-    const { error } = await supabase.from("profiles").update(updates).eq("id", id)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Không thể cập nhật")
+      }
 
-    if (error) {
+      toast({
+        title: "Cập nhật thành công!",
+        description: "Thông tin người dùng đã được cập nhật",
+      })
+
+      setIsSaving(false)
+      loadUserData()
+    } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "❌ Lỗi cập nhật",
+        title: "Lỗi cập nhật",
         description: error.message,
       })
       setIsSaving(false)
-      return
     }
-
-    toast({
-      title: "✅ Cập nhật thành công!",
-      description: "Thông tin người dùng đã được cập nhật",
-    })
-
-    setIsSaving(false)
-    loadUserData()
   }
 
   const handleChangePassword = async () => {

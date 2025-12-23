@@ -12,6 +12,7 @@ interface CreateUserInput {
   fullName: string
   role: string
   companyId?: string
+  companyName?: string // Added companyName for system admin to set display name
   phone?: string
 }
 
@@ -52,6 +53,21 @@ export async function createUser(input: CreateUserInput) {
       return { error: "Bạn không có quyền tạo người dùng" }
     }
 
+    if (currentProfile.role === "admin") {
+      if (!currentProfile.company_id) {
+        return { error: "Bạn chưa có công ty. Vui lòng liên hệ quản trị viên hệ thống." }
+      }
+      if (input.companyId && input.companyId !== currentProfile.company_id) {
+        return { error: "Bạn chỉ có thể tạo người dùng cho công ty của mình" }
+      }
+      // Force company_id to admin's company
+      input.companyId = currentProfile.company_id
+
+      if (input.role === "system_admin" || input.role === "admin") {
+        return { error: "Bạn không có quyền tạo quản trị viên. Chỉ System Admin mới có quyền này." }
+      }
+    }
+
     if (currentProfile.role !== "system_admin" && input.companyId) {
       const quotaCheck = await checkUserQuota(input.companyId)
 
@@ -80,6 +96,20 @@ export async function createUser(input: CreateUserInput) {
         error: adminError.message.includes("SUPABASE_SERVICE_ROLE_KEY")
           ? "Service role key chưa được cấu hình. Vui lòng thêm SUPABASE_SERVICE_ROLE_KEY vào environment variables. Xem hướng dẫn trong ENV_SETUP.md"
           : `Lỗi khởi tạo admin client: ${adminError.message}`,
+      }
+    }
+
+    if (currentProfile.role === "system_admin" && input.companyId && input.companyName) {
+      console.log("[v0] Updating company display_name:", input.companyName)
+      const { error: updateCompanyError } = await adminClient
+        .from("companies")
+        .update({ display_name: input.companyName })
+        .eq("id", input.companyId)
+
+      if (updateCompanyError) {
+        console.error("[v0] Failed to update company display_name:", updateCompanyError)
+      } else {
+        console.log("[v0] Company display_name updated successfully")
       }
     }
 
@@ -131,6 +161,8 @@ export async function createUser(input: CreateUserInput) {
 
     console.log("[v0] Profile updated successfully")
     revalidatePath("/admin/users")
+    revalidatePath("/admin/companies")
+    revalidatePath("/admin")
     return { success: true, userId: authData.user.id }
   } catch (error: any) {
     console.error("[v0] Create user error:", error)
@@ -138,7 +170,15 @@ export async function createUser(input: CreateUserInput) {
   }
 }
 
-export async function createCompany(input: { name: string; registrationNumber?: string }) {
+export async function createCompany(input: {
+  name: string
+  registrationNumber?: string
+  address?: string
+  phone?: string
+  email?: string
+  contactPerson?: string
+  displayName?: string
+}) {
   try {
     console.log("[v0] Creating company:", input.name)
 
@@ -163,6 +203,11 @@ export async function createCompany(input: { name: string; registrationNumber?: 
       .insert({
         name: input.name,
         registration_number: input.registrationNumber || null,
+        address: input.address || null,
+        phone: input.phone || null,
+        email: input.email || null,
+        contact_person: input.contactPerson || null,
+        display_name: input.displayName || input.name,
       })
       .select()
       .single()
@@ -204,7 +249,11 @@ export async function deleteUser(userId: string) {
       return { error: "Không tìm thấy phiên đăng nhập" }
     }
 
-    const { data: currentProfile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    const { data: currentProfile } = await supabase
+      .from("profiles")
+      .select("role, company_id")
+      .eq("id", user.id)
+      .single()
 
     if (!currentProfile || (currentProfile.role !== "admin" && currentProfile.role !== "system_admin")) {
       return { error: "Bạn không có quyền xóa người dùng" }
@@ -214,7 +263,17 @@ export async function deleteUser(userId: string) {
       return { error: "Bạn không thể xóa chính mình" }
     }
 
-    const { data: userProfile } = await supabase.from("profiles").select("company_id").eq("id", userId).single()
+    const { data: userProfile } = await supabase.from("profiles").select("company_id, role").eq("id", userId).single()
+
+    if (currentProfile.role === "admin") {
+      if (!userProfile || userProfile.company_id !== currentProfile.company_id) {
+        return { error: "Bạn chỉ có thể xóa người dùng trong công ty của mình" }
+      }
+      // Admins cannot delete other admins or system admins
+      if (userProfile.role === "admin" || userProfile.role === "system_admin") {
+        return { error: "Bạn không thể xóa quản trị viên khác" }
+      }
+    }
 
     console.log("[v0] Creating admin client for deletion...")
     let adminClient
@@ -241,6 +300,7 @@ export async function deleteUser(userId: string) {
 
     console.log("[v0] User deleted successfully")
     revalidatePath("/admin/users")
+    revalidatePath("/admin")
     return { success: true }
   } catch (error: any) {
     console.error("[v0] Delete user error:", error)

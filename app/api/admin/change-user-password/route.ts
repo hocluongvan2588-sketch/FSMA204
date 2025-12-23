@@ -14,7 +14,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 })
     }
 
-    // Check if current user is admin
     const supabase = await createServerClient()
     const {
       data: { user },
@@ -24,13 +23,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    const { data: profile } = await supabase.from("profiles").select("role, company_id").eq("id", user.id).single()
 
     if (!profile || !["admin", "system_admin"].includes(profile.role)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
-    // Create admin client using service role key
+    if (profile.role !== "system_admin") {
+      // Non-system admin can only change passwords for users in their company
+      const { data: targetProfile } = await supabase.from("profiles").select("company_id").eq("id", userId).single()
+
+      if (!targetProfile) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 })
+      }
+
+      if (targetProfile.company_id !== profile.company_id) {
+        return NextResponse.json(
+          { error: "Forbidden - Cannot change password for users outside your company" },
+          { status: 403 },
+        )
+      }
+    }
+
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: {
         autoRefreshToken: false,
@@ -38,7 +52,6 @@ export async function POST(request: Request) {
       },
     })
 
-    // Update user password using admin client
     const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
       password: newPassword,
     })

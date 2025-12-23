@@ -64,17 +64,23 @@ export default async function AdminMyCompanyPage() {
           </CardHeader>
           <CardContent>
             <dl className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              {profile.companies.display_name && profile.companies.display_name !== profile.companies.name && (
+                <div className="sm:col-span-2">
+                  <dt className="text-sm font-medium text-slate-500 mb-1">Tên hiển thị (Đặt bởi System Admin)</dt>
+                  <dd className="text-base text-slate-900 font-semibold">{profile.companies.display_name}</dd>
+                </div>
+              )}
               <div>
                 <dt className="text-sm font-medium text-slate-500 mb-1">Tên công ty</dt>
                 <dd className="text-base text-slate-900">{profile.companies.name}</dd>
               </div>
               <div>
                 <dt className="text-sm font-medium text-slate-500 mb-1">Mã số đăng ký kinh doanh</dt>
-                <dd className="text-base text-slate-900">{profile.companies.registration_number}</dd>
+                <dd className="text-base text-slate-900">{profile.companies.registration_number || "Chưa cập nhật"}</dd>
               </div>
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-slate-500 mb-1">Địa chỉ</dt>
-                <dd className="text-base text-slate-900">{profile.companies.address}</dd>
+                <dd className="text-base text-slate-900">{profile.companies.address || "Chưa cập nhật"}</dd>
               </div>
               <div>
                 <dt className="text-sm font-medium text-slate-500 mb-1">Số điện thoại</dt>

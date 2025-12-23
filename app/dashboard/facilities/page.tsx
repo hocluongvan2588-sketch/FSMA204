@@ -3,14 +3,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { FacilitiesSearchFilter } from "@/components/facilities-search-filter"
 
-export default async function FacilitiesPage() {
+export default async function FacilitiesPage({
+  searchParams,
+}: {
+  searchParams: { search?: string; facility_type?: string; status?: string }
+}) {
   const supabase = await createClient()
+  const { search, facility_type, status } = searchParams
 
-  const { data: facilities } = await supabase
-    .from("facilities")
-    .select("*, companies(name)")
-    .order("created_at", { ascending: false })
+  let query = supabase.from("facilities").select("*, companies(name)")
+
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,location_code.ilike.%${search}%,address.ilike.%${search}%`)
+  }
+
+  if (facility_type) {
+    query = query.eq("facility_type", facility_type)
+  }
+
+  if (status) {
+    query = query.eq("certification_status", status)
+  }
+
+  const { data: facilities } = await query.order("created_at", { ascending: false })
 
   return (
     <div className="space-y-6">
@@ -24,6 +41,8 @@ export default async function FacilitiesPage() {
         </Button>
       </div>
 
+      <FacilitiesSearchFilter />
+
       {!facilities || facilities.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -36,8 +55,14 @@ export default async function FacilitiesPage() {
               />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">Chưa có cơ sở nào</h3>
-            <p className="text-slate-500 mb-6">Hãy tạo cơ sở đầu tiên để bắt đầu theo dõi sản xuất</p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              {search || facility_type || status ? "Không tìm thấy kết quả" : "Chưa có cơ sở nào"}
+            </h3>
+            <p className="text-slate-500 mb-6">
+              {search || facility_type || status
+                ? "Thử thay đổi bộ lọc của bạn"
+                : "Hãy tạo cơ sở đầu tiên để bắt đầu theo dõi sản xuất"}
+            </p>
             <Button asChild>
               <Link href="/dashboard/facilities/create">Tạo cơ sở mới</Link>
             </Button>

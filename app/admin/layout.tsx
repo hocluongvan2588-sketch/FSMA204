@@ -2,7 +2,7 @@ import type React from "react"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { AdminNav } from "@/components/admin-nav"
-import { LanguageProvider } from "@/contexts/language-context"
+import { LanguageProviderWrapper } from "@/components/language-provider-wrapper"
 import { canAccessAdminPanel } from "@/lib/auth/roles"
 import { SubscriptionAlert } from "@/components/subscription-alert"
 
@@ -20,24 +20,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const { ensureProfileExists } = await import("@/lib/supabase/profile-helpers")
   const { profile, error: profileError } = await ensureProfileExists(user)
 
-  console.log("[v0] Admin Layout - User ID:", user.id)
-  console.log("[v0] Admin Layout - Profile:", profile)
-  console.log("[v0] Admin Layout - Profile Error:", profileError)
-  console.log("[v0] Admin Layout - Role:", profile?.role)
-  console.log("[v0] Admin Layout - Can Access:", profile ? canAccessAdminPanel(profile.role) : false)
-
   if (!profile) {
-    console.log("[v0] Admin Layout - No profile found and could not create, redirecting to login")
+    if (profileError?.code === "42P17") {
+      console.error("[v0] RLS recursion detected in admin layout")
+      redirect("/auth/login?error=rls_recursion")
+    }
     redirect("/auth/login?error=profile_missing")
   }
 
   if (!canAccessAdminPanel(profile.role)) {
-    console.log("[v0] Admin Layout - No admin access, redirecting to dashboard")
     redirect("/dashboard")
   }
 
   return (
-    <LanguageProvider>
+    <LanguageProviderWrapper>
       <div className="flex min-h-screen bg-slate-50">
         <AdminNav user={user} profile={profile} />
         <main className="flex-1 overflow-y-auto">
@@ -47,6 +43,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
         </main>
       </div>
-    </LanguageProvider>
+    </LanguageProviderWrapper>
   )
 }

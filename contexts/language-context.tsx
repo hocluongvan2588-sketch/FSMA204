@@ -8,10 +8,26 @@ import { translations, type Locale, defaultLocale } from "@/lib/i18n"
 interface LanguageContextType {
   locale: Locale
   setLocale: (locale: Locale) => void
-  t: typeof translations.en
+  t: (key: string) => string
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
+
+function getNestedTranslation(obj: any, path: string): string {
+  const keys = path.split(".")
+  let result = obj
+
+  for (const key of keys) {
+    if (result && typeof result === "object" && key in result) {
+      result = result[key]
+    } else {
+      console.warn(`[v0] Translation key not found: ${path}`)
+      return path // Return the key itself if not found
+    }
+  }
+
+  return typeof result === "string" ? result : path
+}
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(defaultLocale)
@@ -29,10 +45,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("locale", newLocale)
   }
 
+  const t = (key: string): string => {
+    return getNestedTranslation(translations[locale], key)
+  }
+
   const value = {
     locale,
     setLocale,
-    t: translations[locale],
+    t,
   }
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>

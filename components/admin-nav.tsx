@@ -18,6 +18,8 @@ import {
   ArrowLeft,
   Package,
   CreditCard,
+  Factory,
+  UserCog,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { getRoleDisplayName, isSystemAdmin } from "@/lib/auth/roles"
@@ -31,7 +33,7 @@ export function AdminNav({ user, profile }: AdminNavProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
-  const { language } = useLanguage()
+  const { locale, t } = useLanguage()
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -41,49 +43,55 @@ export function AdminNav({ user, profile }: AdminNavProps) {
 
   const systemAdminNavigation = [
     {
-      name: language === "vi" ? "Tổng quan" : "Overview",
+      name: locale === "vi" ? "Tổng quan" : "Overview",
       href: "/admin",
       icon: LayoutDashboard,
-      description: language === "vi" ? "Dashboard quản trị" : "Admin dashboard",
+      description: locale === "vi" ? "Dashboard quản trị" : "Admin dashboard",
     },
     {
-      name: language === "vi" ? "Người dùng" : "Users",
+      name: locale === "vi" ? "Người dùng" : "Users",
       href: "/admin/users",
       icon: Users,
-      description: language === "vi" ? "Quản lý tài khoản" : "Account management",
+      description: locale === "vi" ? "Quản lý tài khoản" : "Account management",
     },
     {
-      name: language === "vi" ? "Công ty" : "Companies",
+      name: locale === "vi" ? "Công ty" : "Companies",
       href: "/admin/companies",
       icon: Building2,
-      description: language === "vi" ? "Tổ chức" : "Organizations",
+      description: locale === "vi" ? "Tổ chức" : "Organizations",
     },
     {
-      name: language === "vi" ? "Nhật ký hệ thống" : "System Logs",
+      name: locale === "vi" ? "Cơ sở" : "Facilities",
+      href: "/admin/facilities",
+      icon: Factory,
+      description: locale === "vi" ? "Quản lý cơ sở" : "Facility management",
+    },
+    {
+      name: locale === "vi" ? "Nhật ký hệ thống" : "System Logs",
       href: "/admin/system-logs",
       icon: FileText,
-      description: language === "vi" ? "Nhật ký kiểm toán" : "Audit trail",
+      description: locale === "vi" ? "Nhật ký kiểm toán" : "Audit trail",
     },
   ]
 
   const companyAdminNavigation = [
     {
-      name: language === "vi" ? "Tổng quan" : "Overview",
+      name: locale === "vi" ? "Tổng quan" : "Overview",
       href: "/admin",
       icon: LayoutDashboard,
-      description: language === "vi" ? "Dashboard quản trị" : "Admin dashboard",
+      description: locale === "vi" ? "Dashboard quản trị" : "Admin dashboard",
     },
     {
-      name: language === "vi" ? "Người dùng công ty" : "Company Users",
+      name: locale === "vi" ? "Người dùng công ty" : "Company Users",
       href: "/admin/users",
       icon: Users,
-      description: language === "vi" ? "Quản lý người dùng" : "User management",
+      description: locale === "vi" ? "Quản lý người dùng" : "User management",
     },
     {
-      name: language === "vi" ? "Công ty của tôi" : "My Company",
+      name: locale === "vi" ? "Công ty của tôi" : "My Company",
       href: "/admin/my-company",
       icon: Building2,
-      description: language === "vi" ? "Thông tin công ty" : "Company information",
+      description: locale === "vi" ? "Thông tin công ty" : "Company information",
     },
   ]
 
@@ -92,16 +100,16 @@ export function AdminNav({ user, profile }: AdminNavProps) {
   const serviceNavigation = isSystemAdmin(profile?.role)
     ? [
         {
-          name: language === "vi" ? "Gói dịch vụ" : "Service Packages",
+          name: locale === "vi" ? "Gói dịch vụ" : "Service Packages",
           href: "/admin/service-packages",
           icon: Package,
-          description: language === "vi" ? "Quản lý gói dịch vụ" : "Package management",
+          description: locale === "vi" ? "Quản lý gói dịch vụ" : "Package management",
         },
         {
-          name: language === "vi" ? "Đăng ký dịch vụ" : "Subscriptions",
+          name: locale === "vi" ? "Đăng ký dịch vụ" : "Subscriptions",
           href: "/admin/subscriptions",
           icon: CreditCard,
-          description: language === "vi" ? "Quản lý đăng ký" : "Subscription management",
+          description: locale === "vi" ? "Quản lý đăng ký" : "Subscription management",
         },
       ]
     : []
@@ -109,13 +117,28 @@ export function AdminNav({ user, profile }: AdminNavProps) {
   const companyServiceNavigation = !isSystemAdmin(profile?.role)
     ? [
         {
-          name: language === "vi" ? "Gói dịch vụ của tôi" : "My Subscription",
+          name: locale === "vi" ? "Gói dịch vụ của tôi" : "My Subscription",
           href: "/admin/my-subscription",
           icon: CreditCard,
-          description: language === "vi" ? "Xem và nâng cấp gói" : "View and upgrade plan",
+          description: locale === "vi" ? "Xem và nâng cấp gói" : "View and upgrade plan",
         },
       ]
     : []
+
+  const fdaComplianceNavigation = [
+    {
+      name: locale === "vi" ? "Đăng ký FDA" : "FDA Registration",
+      href: "/admin/fda-registrations",
+      icon: Shield,
+      description: locale === "vi" ? "Quản lý đăng ký FDA" : "FDA registration management",
+    },
+    {
+      name: locale === "vi" ? "US Agent" : "US Agent",
+      href: "/admin/us-agents",
+      icon: UserCog,
+      description: locale === "vi" ? "Quản lý đại lý Mỹ" : "US agent management",
+    },
+  ]
 
   return (
     <aside className="w-72 border-r bg-white shadow-sm flex flex-col">
@@ -133,13 +156,13 @@ export function AdminNav({ user, profile }: AdminNavProps) {
             <Shield className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-lg">{language === "vi" ? "Quản trị" : "Admin Panel"}</h2>
+            <h2 className="font-bold text-lg">{locale === "vi" ? "Quản trị" : "Admin Panel"}</h2>
             <p className="text-xs text-slate-500">
               {isSystemAdmin(profile?.role)
-                ? language === "vi"
+                ? locale === "vi"
                   ? "Quản lý hệ thống"
                   : "System Management"
-                : language === "vi"
+                : locale === "vi"
                   ? "Quản lý công ty"
                   : "Company Management"}
             </p>
@@ -149,14 +172,14 @@ export function AdminNav({ user, profile }: AdminNavProps) {
           variant={isSystemAdmin(profile?.role) ? "default" : "destructive"}
           className={cn("w-full justify-center", isSystemAdmin(profile?.role) && "bg-purple-600")}
         >
-          {getRoleDisplayName(profile?.role, language)}
+          {getRoleDisplayName(profile?.role, locale)}
         </Badge>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
         <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-          {language === "vi" ? "QUẢN TRỊ" : "ADMINISTRATION"}
+          {locale === "vi" ? "QUẢN TRỊ" : "ADMINISTRATION"}
         </p>
         {navigation.map((item) => {
           const isActive = pathname === item.href
@@ -185,7 +208,7 @@ export function AdminNav({ user, profile }: AdminNavProps) {
           <>
             <div className="pt-4">
               <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                {language === "vi" ? "QUẢN LÝ DỊCH VỤ" : "SERVICE MANAGEMENT"}
+                {locale === "vi" ? "QUẢN LÝ DỊCH VỤ" : "SERVICE MANAGEMENT"}
               </p>
             </div>
             {serviceNavigation.map((item) => {
@@ -217,7 +240,7 @@ export function AdminNav({ user, profile }: AdminNavProps) {
           <>
             <div className="pt-4">
               <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                {language === "vi" ? "DỊCH VỤ" : "SERVICES"}
+                {locale === "vi" ? "DỊCH VỤ" : "SERVICES"}
               </p>
             </div>
             {companyServiceNavigation.map((item) => {
@@ -245,16 +268,46 @@ export function AdminNav({ user, profile }: AdminNavProps) {
           </>
         )}
 
+        <>
+          <div className="pt-4">
+            <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+              {locale === "vi" ? "TUÂN THỦ FDA" : "FDA COMPLIANCE"}
+            </p>
+          </div>
+          {fdaComplianceNavigation.map((item) => {
+            const isActive = pathname === item.href
+            const Icon = item.icon
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-start gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all hover:scale-[1.02]",
+                  isActive
+                    ? "bg-gradient-to-r from-blue-50 to-teal-50 text-blue-700 shadow-sm border border-blue-100"
+                    : "text-slate-700 hover:bg-slate-100",
+                )}
+              >
+                <Icon className={cn("h-5 w-5 mt-0.5 flex-shrink-0", isActive ? "text-blue-600" : "text-slate-500")} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold">{item.name}</div>
+                  <div className="text-xs text-slate-500">{item.description}</div>
+                </div>
+              </Link>
+            )
+          })}
+        </>
+
         <div className="pt-6">
           <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            {language === "vi" ? "KHÁC" : "OTHER"}
+            {locale === "vi" ? "KHÁC" : "OTHER"}
           </p>
           <Link
             href="/dashboard"
             className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <ArrowLeft className="h-5 w-5 text-slate-500" />
-            <span>{language === "vi" ? "Quay về Dashboard" : "Back to Dashboard"}</span>
+            <span>{locale === "vi" ? "Quay về Dashboard" : "Back to Dashboard"}</span>
           </Link>
         </div>
       </nav>
@@ -265,23 +318,23 @@ export function AdminNav({ user, profile }: AdminNavProps) {
 
         <div className="rounded-lg bg-slate-50 p-3 border">
           <p className="text-sm font-medium text-slate-900 truncate">
-            {profile?.full_name || (language === "vi" ? "Quản trị viên" : "Administrator")}
+            {profile?.full_name || (locale === "vi" ? "Quản trị viên" : "Administrator")}
           </p>
           <p className="text-xs text-slate-500 truncate">{profile?.email || user.email}</p>
           {isSystemAdmin(profile?.role) ? (
             <Badge className="mt-2 w-full justify-center bg-purple-600 hover:bg-purple-700">
-              {language === "vi" ? "SYSTEM ADMIN - Toàn hệ thống" : "SYSTEM ADMIN - Full Access"}
+              {locale === "vi" ? "SYSTEM ADMIN - Toàn hệ thống" : "SYSTEM ADMIN - Full Access"}
             </Badge>
           ) : (
             <Badge className="mt-2 w-full justify-center bg-orange-600 hover:bg-orange-700">
-              {language === "vi" ? "ADMIN - Phạm vi công ty" : "ADMIN - Company Scope"}
+              {locale === "vi" ? "ADMIN - Phạm vi công ty" : "ADMIN - Company Scope"}
             </Badge>
           )}
         </div>
 
         <Button variant="outline" className="w-full bg-transparent" onClick={handleSignOut}>
           <LogOut className="h-4 w-4 mr-2" />
-          {language === "vi" ? "Đăng xuất" : "Sign Out"}
+          {locale === "vi" ? "Đăng xuất" : "Sign Out"}
         </Button>
       </div>
     </aside>

@@ -3,244 +3,227 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { redirect } from "next/navigation"
+import { QuickActions } from "@/components/quick-actions"
+import { Package, Building2, Tag, Truck, TrendingUp, TrendingDown } from "lucide-react"
+import { FDATimelineChart } from "@/components/fda-timeline-chart"
+import { FSMAComplianceChart } from "@/components/fsma-compliance-chart"
+import { DailyGreeting } from "@/components/daily-greeting"
+import { FSMATour } from "@/components/fsma-tour"
 
 export default async function DashboardPage() {
   const supabase = await createClient()
+
+  const authResult = await Promise.race([
+    supabase.auth.getUser(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Auth timeout")), 5000)),
+  ]).catch((error) => {
+    console.error("[v0] Auth timeout or error:", error)
+    return { data: { user: null }, error }
+  })
+
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+    error: authError,
+  } = authResult as any
 
-  // Get profile with company
+  if (authError) {
+    console.error("[v0] Auth error:", authError.message)
+  }
+
+  if (!user) {
+    console.log("[v0] No user found, showing default dashboard")
+    return <DefaultDashboard />
+  }
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("*, companies(name, registration_number)")
-    .eq("id", user!.id)
+    .eq("id", user.id)
     .single()
 
-  // Get stats
-  const { count: facilitiesCount } = await supabase.from("facilities").select("*", { count: "exact", head: true })
+  console.log("[v0] Profile found for user:", user.email)
 
-  const { count: productsCount } = await supabase.from("products").select("*", { count: "exact", head: true })
+  if (profile?.role === "manager") {
+    redirect("/dashboard/manager")
+  }
+  if (profile?.role === "operator") {
+    redirect("/dashboard/operator")
+  }
+  if (profile?.role === "viewer") {
+    redirect("/dashboard/viewer")
+  }
 
-  const { count: ftlCount } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .eq("is_ftl", true)
+  let facilitiesCount = 0
+  let productsCount = 0
+  let lotsCount = 0
+  let shipmentsCount = 0
+  let fdaRegistrations: any[] = []
+  let totalLots = 0
+  let lotsWithKDE = 0
+  let recentActivities: any[] = []
 
-  const { count: lotsCount } = await supabase.from("traceability_lots").select("*", { count: "exact", head: true })
+  try {
+    const [facilities, products, lots, shipments, registrations, kdeStatsResult, activities] = await Promise.all([
+      supabase.from("facilities").select("*", { count: "exact", head: true }),
+      supabase.from("products").select("*", { count: "exact", head: true }),
+      supabase.from("traceability_lots").select("*", { count: "exact", head: true }),
+      supabase.from("shipments").select("*", { count: "exact", head: true }),
 
-  const { count: activeLotsCount } = await supabase
-    .from("traceability_lots")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "active")
+      supabase
+        .from("fda_registrations")
+        .select("*, facilities(name)")
+        .order("renewal_date", { ascending: true })
+        .limit(5),
 
-  const { count: cteCount } = await supabase
-    .from("critical_tracking_events")
-    .select("*", { count: "exact", head: true })
+      supabase.rpc("calculate_kde_compliance"),
 
-  const { count: shipmentsCount } = await supabase.from("shipments").select("*", { count: "exact", head: true })
+      supabase
+        .from("critical_tracking_events")
+        .select(`
+          *,
+          traceability_lots(tlc, products(product_name)),
+          facilities(name)
+        `)
+        .order("event_date", { ascending: false })
+        .limit(10),
+    ])
 
-  const { count: inTransitCount } = await supabase
-    .from("shipments")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "in_transit")
+    facilitiesCount = facilities.count || 0
+    productsCount = products.count || 0
+    lotsCount = lots.count || 0
+    shipmentsCount = shipments.count || 0
+    fdaRegistrations = (registrations.data || []).map((reg: any) => ({
+      id: reg.id,
+      facility_name: reg.facilities?.name || "Unknown Facility",
+      registration_date: reg.registration_date,
+      renewal_date: reg.renewal_date,
+      expiry_date: reg.expiry_date,
+      fda_registration_number: reg.fda_registration_number,
+    }))
 
-  // Get recent CTEs
-  const { data: recentCTEs } = await supabase
-    .from("critical_tracking_events")
-    .select("*, traceability_lots(tlc, products(product_name)), facilities(name)")
-    .order("event_date", { ascending: false })
-    .limit(5)
+    if (kdeStatsResult.data && !kdeStatsResult.error) {
+      const stats = kdeStatsResult.data[0]
+      totalLots = stats?.total || lotsCount
+      lotsWithKDE = stats?.with_kde || 0
+    } else {
+      console.log("[v0] KDE stats error or no data:", kdeStatsResult.error)
+      totalLots = lotsCount
+      lotsWithKDE = 0
+    }
 
-  // Get recent shipments
-  const { data: recentShipments } = await supabase
-    .from("shipments")
-    .select("*, traceability_lots(tlc, products(product_name))")
-    .order("shipment_date", { ascending: false })
-    .limit(5)
+    recentActivities = activities.data || []
+  } catch (error) {
+    console.error("[v0] Dashboard data fetch error:", error)
+  }
+
+  const kpiData = [
+    {
+      title: "Cơ sở",
+      value: facilitiesCount,
+      change: "+5%",
+      changeType: "increase" as const,
+      icon: Building2,
+      gradient: "from-emerald-500 to-emerald-600",
+      bgGradient: "from-emerald-50 to-emerald-100",
+      textColor: "text-emerald-700",
+    },
+    {
+      title: "Sản phẩm",
+      value: productsCount,
+      change: "+12%",
+      changeType: "increase" as const,
+      icon: Package,
+      gradient: "from-blue-500 to-blue-600",
+      bgGradient: "from-blue-50 to-blue-100",
+      textColor: "text-blue-700",
+    },
+    {
+      title: "Mã TLC",
+      value: lotsCount,
+      change: "+8%",
+      changeType: "increase" as const,
+      icon: Tag,
+      gradient: "from-purple-500 to-purple-600",
+      bgGradient: "from-purple-50 to-purple-100",
+      textColor: "text-purple-700",
+    },
+    {
+      title: "Vận chuyển",
+      value: shipmentsCount,
+      change: "-2%",
+      changeType: "decrease" as const,
+      icon: Truck,
+      gradient: "from-amber-500 to-amber-600",
+      bgGradient: "from-amber-50 to-amber-100",
+      textColor: "text-amber-700",
+    },
+  ]
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">Chào mừng trở lại!</h1>
-        <p className="text-slate-500 mt-1">Xin chào {profile?.full_name}, đây là hoạt động mới nhất của bạn</p>
+    <div className="space-y-8 pb-8">
+      <div data-tour="daily-greeting">
+        <DailyGreeting userName={profile?.full_name} autoRotate={true} rotateInterval={30000} />
       </div>
 
-      {/* Quick Actions section at the top */}
-      <div className="bg-gradient-to-r from-blue-50 to-teal-50 rounded-lg p-6 border border-blue-100">
-        <h2 className="text-lg font-semibold mb-4 text-slate-900">Thao tác nhanh</h2>
-        <div className="flex flex-wrap gap-3">
-          <Button asChild className="bg-gradient-to-r from-blue-600 to-teal-600">
-            <Link href="/dashboard/cte/create">
-              <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Tạo sự kiện CTE mới
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="bg-white">
-            <Link href="/dashboard/lots/create">
-              <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Thêm lô hàng mới
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="bg-white">
-            <Link href="/dashboard/shipments/create">
-              <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Tạo vận chuyển
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="bg-white">
-            <Link href="/dashboard/reports/generate">
-              <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              Xuất báo cáo
-            </Link>
-          </Button>
-        </div>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4" data-tour="kpi-cards">
+        {kpiData.map((kpi) => {
+          const Icon = kpi.icon
+          return (
+            <Card
+              key={kpi.title}
+              data-tour={kpi.title === "Mã TLC" ? "tlc-codes" : undefined}
+              className={`rounded-3xl shadow-lg shadow-slate-900/5 border-0 overflow-hidden hover:shadow-xl transition-all duration-300 hover:scale-105 bg-gradient-to-br ${kpi.bgGradient} dark:from-slate-800 dark:to-slate-900`}
+            >
+              <CardContent className="p-6 h-full">
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`p-3 rounded-2xl bg-gradient-to-br ${kpi.gradient} shadow-lg`}>
+                    <Icon className="h-6 w-6 text-white" />
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    className={`${kpi.changeType === "increase" ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800" : "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:border-red-800"} font-semibold border`}
+                  >
+                    {kpi.changeType === "increase" ? (
+                      <TrendingUp className="h-3 w-3 mr-1" />
+                    ) : (
+                      <TrendingDown className="h-3 w-3 mr-1" />
+                    )}
+                    {kpi.change}
+                  </Badge>
+                </div>
+                <div>
+                  <p className={`text-sm font-semibold ${kpi.textColor} dark:text-slate-400 mb-1`}>{kpi.title}</p>
+                  <p className="text-4xl font-bold text-slate-900 dark:text-slate-100">{kpi.value}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Cơ sở</CardTitle>
-            <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-              />
-            </svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{facilitiesCount || 0}</div>
-            <p className="text-xs text-muted-foreground">Cơ sở sản xuất</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sản phẩm</CardTitle>
-            <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-              />
-            </svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{productsCount || 0}</div>
-            <p className="text-xs text-muted-foreground">{ftlCount || 0} sản phẩm FTL</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Mã TLC</CardTitle>
-            <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-              />
-            </svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{lotsCount || 0}</div>
-            <p className="text-xs text-muted-foreground">{activeLotsCount || 0} lô đang hoạt động</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Vận chuyển</CardTitle>
-            <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v12a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"
-              />
-            </svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{shipmentsCount || 0}</div>
-            <p className="text-xs text-muted-foreground">{inTransitCount || 0} đang vận chuyển</p>
-          </CardContent>
-        </Card>
+      <div data-tour="quick-actions">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Thao tác nhanh</h2>
+        <QuickActions />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Company Info */}
-        {profile?.companies && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Thông tin công ty</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid gap-4">
-                <div>
-                  <dt className="text-sm font-medium text-slate-500">Tên công ty</dt>
-                  <dd className="mt-1 text-base text-slate-900">{profile.companies.name}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-slate-500">Mã số thuế</dt>
-                  <dd className="mt-1 text-base text-slate-900">{profile.companies.registration_number}</dd>
-                </div>
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Quick Stats */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tình hình hôm nay</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Sự kiện theo dõi</span>
-                <span className="text-2xl font-bold text-blue-600">{cteCount || 0}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Đang vận chuyển</span>
-                <span className="text-2xl font-bold text-teal-600">{inTransitCount || 0}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Lô hàng đang sản xuất</span>
-                <span className="text-2xl font-bold text-indigo-600">{activeLotsCount || 0}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <FDATimelineChart registrations={fdaRegistrations} />
+        <FSMAComplianceChart totalLots={totalLots} lotsWithKDE={lotsWithKDE} />
       </div>
 
-      {/* Recent CTEs */}
-      <Card>
+      <Card className="rounded-3xl shadow-lg shadow-slate-900/5">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Hoạt động gần đây</CardTitle>
-          <Button asChild size="sm" variant="outline" className="bg-transparent">
+          <div>
+            <CardTitle className="text-xl">Bảng hoạt động sản xuất</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">10 bản ghi mới nhất từ hệ thống sản xuất</p>
+          </div>
+          <Button asChild size="sm" variant="outline" className="bg-transparent rounded-xl">
             <Link href="/dashboard/cte">Xem tất cả</Link>
           </Button>
         </CardHeader>
         <CardContent>
-          {!recentCTEs || recentCTEs.length === 0 ? (
+          {recentActivities.length === 0 ? (
             <div className="text-center py-12 space-y-4">
               <div className="h-16 w-16 rounded-full bg-blue-50 flex items-center justify-center mx-auto">
                 <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -254,113 +237,144 @@ export default async function DashboardPage() {
               </div>
               <div>
                 <p className="font-medium text-slate-900 mb-1">Bắt đầu theo dõi ngay!</p>
-                <p className="text-sm text-slate-500 mb-4">Tạo sự kiện CTE đầu tiên trong 30 giây</p>
+                <p className="text-sm text-slate-500 mb-4">Tạo sự kiện CTE đầu tiên theo chuẩn FSMA 204</p>
               </div>
-              <Button asChild>
+              <Button asChild className="rounded-xl">
                 <Link href="/dashboard/cte/create">Tạo sự kiện đầu tiên</Link>
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
-              {recentCTEs.map((cte) => (
-                <div key={cte.id} className="flex items-start justify-between border-b pb-4 last:border-0 last:pb-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="secondary" className="capitalize">
-                        {cte.event_type === "harvest"
-                          ? "Thu hoạch"
-                          : cte.event_type === "cooling"
-                            ? "Làm lạnh"
-                            : cte.event_type === "packing"
-                              ? "Đóng gói"
-                              : cte.event_type === "receiving"
-                                ? "Tiếp nhận"
-                                : cte.event_type === "transformation"
-                                  ? "Chế biến"
-                                  : "Vận chuyển"}
-                      </Badge>
-                      <span className="text-sm text-slate-500">
-                        {new Date(cte.event_date).toLocaleDateString("vi-VN")}
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium text-slate-900">
-                      {cte.traceability_lots?.products?.product_name} - {cte.traceability_lots?.tlc}
-                    </p>
-                    <p className="text-xs text-slate-500">{cte.facilities?.name}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Sự kiện (CTE)
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Sản phẩm / TLC
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Cơ sở
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Ngày
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Trạng thái
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentActivities.map((activity) => {
+                    const eventTypeMap: Record<string, { label: string; color: string }> = {
+                      harvest: { label: "Harvesting", color: "bg-emerald-100 text-emerald-700" },
+                      cooling: { label: "Cooling", color: "bg-blue-100 text-blue-700" },
+                      packing: { label: "Initial Packing", color: "bg-purple-100 text-purple-700" },
+                      receiving: { label: "Receiving", color: "bg-amber-100 text-amber-700" },
+                      transformation: { label: "Transformation", color: "bg-pink-100 text-pink-700" },
+                      shipping: { label: "Shipping", color: "bg-cyan-100 text-cyan-700" },
+                    }
+
+                    const eventInfo = eventTypeMap[activity.event_type] || {
+                      label: activity.event_type,
+                      color: "bg-slate-100 text-slate-700",
+                    }
+
+                    return (
+                      <tr
+                        key={activity.id}
+                        className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
+                      >
+                        <td className="py-4 px-4">
+                          <Badge variant="secondary" className={`${eventInfo.color} rounded-lg`}>
+                            {eventInfo.label}
+                          </Badge>
+                        </td>
+                        <td className="py-4 px-4">
+                          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {activity.traceability_lots?.products?.product_name || "N/A"}
+                          </p>
+                          <p className="text-xs text-slate-500">{activity.traceability_lots?.tlc}</p>
+                        </td>
+                        <td className="py-4 px-4 text-sm text-slate-700 dark:text-slate-300">
+                          {activity.facilities?.name || "N/A"}
+                        </td>
+                        <td className="py-4 px-4 text-sm text-slate-700 dark:text-slate-300">
+                          {new Date(activity.event_date).toLocaleDateString("vi-VN")}
+                        </td>
+                        <td className="py-4 px-4">
+                          {activity.key_data_elements && activity.key_data_elements.length > 0 ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 rounded-lg">
+                              Đạt
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive" className="rounded-lg">
+                              Thiếu KDE
+                            </Badge>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Recent Shipments */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Vận chuyển gần đây</CardTitle>
-          <Button asChild size="sm" variant="outline" className="bg-transparent">
-            <Link href="/dashboard/shipments">Xem tất cả</Link>
+      {profile?.companies && (
+        <Card className="rounded-3xl shadow-lg shadow-slate-900/5" data-tour="company-info">
+          <CardHeader>
+            <CardTitle className="text-xl">Thông tin công ty</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900">
+                <p className="text-sm font-medium text-muted-foreground mb-2">Tên công ty</p>
+                <p className="text-lg font-semibold text-foreground">{profile.companies.name}</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
+                <p className="text-sm font-medium text-muted-foreground mb-2">Mã số thuế</p>
+                <p className="text-lg font-semibold text-foreground">{profile.companies.registration_number}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <FSMATour autoStart={true} />
+    </div>
+  )
+}
+
+function DefaultDashboard() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <h1 className="text-4xl font-bold text-foreground">Chào mừng đến với FSMA 204!</h1>
+          <p className="text-muted-foreground text-lg mt-2">Vui lòng đăng nhập để xem thông tin dashboard của bạn</p>
+        </div>
+      </div>
+
+      <Card className="rounded-3xl border-2 border-dashed border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-100">
+        <CardContent className="py-16 text-center">
+          <div className="mx-auto w-20 h-20 rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/30">
+            <Package className="h-10 w-10 text-white" />
+          </div>
+          <h3 className="text-2xl font-bold text-foreground mb-3">Bắt đầu theo dõi ngay</h3>
+          <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+            Đăng nhập để truy cập hệ thống theo dõi sản phẩm và quản lý dữ liệu FSMA 204
+          </p>
+          <Button
+            asChild
+            size="lg"
+            className="rounded-2xl px-8 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
+          >
+            <Link href="/auth/login">Đăng nhập ngay</Link>
           </Button>
-        </CardHeader>
-        <CardContent>
-          {!recentShipments || recentShipments.length === 0 ? (
-            <div className="text-center py-12 space-y-4">
-              <div className="h-16 w-16 rounded-full bg-teal-50 flex items-center justify-center mx-auto">
-                <svg className="h-8 w-8 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v12a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"
-                  />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-slate-900 mb-1">Chưa có vận chuyển nào</p>
-                <p className="text-sm text-slate-500 mb-4">Tạo lô hàng và bắt đầu vận chuyển ngay</p>
-              </div>
-              <Button asChild>
-                <Link href="/dashboard/shipments/create">Tạo vận chuyển mới</Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {recentShipments.map((shipment) => (
-                <div
-                  key={shipment.id}
-                  className="flex items-start justify-between border-b pb-4 last:border-0 last:pb-0"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-sm font-medium text-slate-900">{shipment.shipment_number}</p>
-                      <Badge
-                        variant={
-                          shipment.status === "delivered"
-                            ? "default"
-                            : shipment.status === "in_transit"
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {shipment.status === "delivered"
-                          ? "Đã giao"
-                          : shipment.status === "in_transit"
-                            ? "Đang vận chuyển"
-                            : "Chờ xử lý"}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-slate-700">
-                      {shipment.traceability_lots?.products?.product_name} - {shipment.traceability_lots?.tlc}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(shipment.shipment_date).toLocaleDateString("vi-VN")}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>

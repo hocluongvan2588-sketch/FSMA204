@@ -3,14 +3,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { ProductsSearchFilter } from "@/components/products-search-filter"
 
-export default async function ProductsPage() {
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: { search?: string; category?: string; is_ftl?: string }
+}) {
   const supabase = await createClient()
+  const { search, category, is_ftl } = searchParams
 
-  const { data: products } = await supabase
-    .from("products")
-    .select("*, companies(name)")
-    .order("created_at", { ascending: false })
+  let query = supabase.from("products").select("*, companies(name)")
+
+  if (search) {
+    query = query.or(`product_name.ilike.%${search}%,product_code.ilike.%${search}%,product_name_vi.ilike.%${search}%`)
+  }
+
+  if (category) {
+    query = query.eq("category", category)
+  }
+
+  if (is_ftl === "true") {
+    query = query.eq("is_ftl", true)
+  }
+
+  const { data: products } = await query.order("created_at", { ascending: false })
 
   return (
     <div className="space-y-6">
@@ -24,6 +41,8 @@ export default async function ProductsPage() {
         </Button>
       </div>
 
+      <ProductsSearchFilter />
+
       {!products || products.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -35,59 +54,70 @@ export default async function ProductsPage() {
                 d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
               />
             </svg>
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">Chưa có sản phẩm nào</h3>
-            <p className="text-slate-500 mb-6">Thêm sản phẩm đầu tiên vào hệ thống</p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              {search || category || is_ftl ? "Không tìm thấy kết quả" : "Chưa có sản phẩm nào"}
+            </h3>
+            <p className="text-slate-500 mb-6">
+              {search || category || is_ftl ? "Thử thay đổi bộ lọc của bạn" : "Thêm sản phẩm đầu tiên vào hệ thống"}
+            </p>
             <Button asChild>
               <Link href="/dashboard/products/create">Tạo sản phẩm mới</Link>
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {products.map((product) => (
-            <Card key={product.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-lg">{product.product_name}</CardTitle>
-                  {product.is_ftl && (
-                    <Badge variant="default" className="shrink-0">
-                      FTL
-                    </Badge>
+        <>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-slate-600">
+              Hiển thị <span className="font-semibold">{products.length}</span> sản phẩm
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {products.map((product) => (
+              <Card key={product.id} className="hover:shadow-md transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-lg">{product.product_name}</CardTitle>
+                    {product.is_ftl && (
+                      <Badge variant="default" className="shrink-0">
+                        FTL
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-xs text-slate-500">Mã sản phẩm</p>
+                    <p className="text-sm font-medium mt-1">{product.product_code}</p>
+                  </div>
+                  {product.product_name_vi && (
+                    <div>
+                      <p className="text-xs text-slate-500">Tên tiếng Việt</p>
+                      <p className="text-sm font-medium mt-1">{product.product_name_vi}</p>
+                    </div>
                   )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-xs text-slate-500">Mã sản phẩm</p>
-                  <p className="text-sm font-medium mt-1">{product.product_code}</p>
-                </div>
-                {product.product_name_vi && (
                   <div>
-                    <p className="text-xs text-slate-500">Tên tiếng Việt</p>
-                    <p className="text-sm font-medium mt-1">{product.product_name_vi}</p>
+                    <p className="text-xs text-slate-500">Danh mục</p>
+                    <p className="text-sm font-medium mt-1 capitalize">{product.category}</p>
                   </div>
-                )}
-                <div>
-                  <p className="text-xs text-slate-500">Danh mục</p>
-                  <p className="text-sm font-medium mt-1 capitalize">{product.category}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Đơn vị</p>
-                  <p className="text-sm font-medium mt-1">{product.unit_of_measure}</p>
-                </div>
-                {product.description && (
                   <div>
-                    <p className="text-xs text-slate-500">Mô tả</p>
-                    <p className="text-sm text-slate-700 line-clamp-2 mt-1">{product.description}</p>
+                    <p className="text-xs text-slate-500">Đơn vị</p>
+                    <p className="text-sm font-medium mt-1">{product.unit_of_measure}</p>
                   </div>
-                )}
-                <Button asChild variant="outline" size="sm" className="w-full mt-2 bg-transparent">
-                  <Link href={`/dashboard/products/${product.id}`}>Xem chi tiết</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  {product.description && (
+                    <div>
+                      <p className="text-xs text-slate-500">Mô tả</p>
+                      <p className="text-sm text-slate-700 line-clamp-2 mt-1">{product.description}</p>
+                    </div>
+                  )}
+                  <Button asChild variant="outline" size="sm" className="w-full mt-2 bg-transparent">
+                    <Link href={`/dashboard/products/${product.id}`}>Xem chi tiết</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

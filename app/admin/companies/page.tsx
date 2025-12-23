@@ -23,7 +23,7 @@ interface Company {
 }
 
 export default function AdminCompaniesPage() {
-  const { language } = useLanguage()
+  const { locale, t } = useLanguage()
   const [companies, setCompanies] = useState<Company[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
@@ -97,7 +97,7 @@ export default function AdminCompaniesPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-lg">{language === "vi" ? "Đang tải..." : "Loading..."}</div>
+        <div className="text-lg">{t("common.messages.loading")}</div>
       </div>
     )
   }
@@ -106,15 +106,11 @@ export default function AdminCompaniesPage() {
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{language === "vi" ? "Quản lý công ty" : "Company Management"}</h1>
+          <h1 className="text-3xl font-bold">{t("company.title")}</h1>
           <p className="text-muted-foreground mt-1">
             {currentUserProfile && isSystemAdmin(currentUserProfile.role)
-              ? language === "vi"
-                ? "Xem và quản lý tất cả các công ty trong hệ thống"
-                : "View and manage all companies in the system"
-              : language === "vi"
-                ? "Xem và quản lý công ty của bạn"
-                : "View and manage your company"}
+              ? t("admin.systemAdminDesc")
+              : t("admin.subtitle")}
           </p>
         </div>
       </div>
@@ -130,8 +126,8 @@ export default function AdminCompaniesPage() {
             />
           </svg>
           <div>
-            <p className="font-semibold">Chế độ System Admin</p>
-            <p className="text-sm">Bạn đang xem tất cả các công ty trong hệ thống.</p>
+            <p className="font-semibold">{t("admin.common.systemAdminModeTitle")}</p>
+            <p className="text-sm">{t("admin.systemAdminDesc")}</p>
           </div>
         </div>
       )}
@@ -140,9 +136,7 @@ export default function AdminCompaniesPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Tổng công ty" : "Total Companies"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("dashboard.nav.company")}</CardTitle>
             <Building2 className="h-5 w-5 text-blue-600" />
           </CardHeader>
           <CardContent>
@@ -152,9 +146,7 @@ export default function AdminCompaniesPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Tổng cơ sở" : "Total Facilities"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("company.info.facilities")}</CardTitle>
             <Building2 className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent>
@@ -166,9 +158,7 @@ export default function AdminCompaniesPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Tổng người dùng" : "Total Users"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("admin.totalUsers")}</CardTitle>
             <Users className="h-5 w-5 text-purple-600" />
           </CardHeader>
           <CardContent>
@@ -180,28 +170,24 @@ export default function AdminCompaniesPage() {
       {/* Companies Table */}
       <Card>
         <CardHeader>
-          <CardTitle>{language === "vi" ? "Danh sách công ty" : "Company List"}</CardTitle>
+          <CardTitle>{t("company.title")}</CardTitle>
           <CardDescription>
-            {language === "vi"
-              ? `${companies.length} công ty đang hoạt động trong hệ thống`
-              : `${companies.length} companies in the system`}
+            {companies.length} {t("admin.common.foundResults")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {companies.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {language === "vi" ? "Chưa có công ty nào" : "No companies yet"}
-            </div>
+            <div className="text-center py-12 text-muted-foreground">{t("common.messages.noData")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{language === "vi" ? "Tên công ty" : "Company Name"}</TableHead>
-                  <TableHead>{language === "vi" ? "Mã số thuế" : "Tax ID"}</TableHead>
-                  <TableHead>{language === "vi" ? "Liên hệ" : "Contact"}</TableHead>
-                  <TableHead>{language === "vi" ? "Cơ sở" : "Facilities"}</TableHead>
-                  <TableHead>{language === "vi" ? "Người dùng" : "Users"}</TableHead>
-                  <TableHead>{language === "vi" ? "Ngày tạo" : "Created"}</TableHead>
+                  <TableHead>{t("company.fields.name")}</TableHead>
+                  <TableHead>{t("company.fields.taxId")}</TableHead>
+                  <TableHead>{t("company.fields.email")}</TableHead>
+                  <TableHead>{t("company.info.facilities")}</TableHead>
+                  <TableHead>{t("admin.users.title")}</TableHead>
+                  <TableHead>{t("common.fields.createdAt")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -224,7 +210,7 @@ export default function AdminCompaniesPage() {
                       <Badge className="bg-green-100 text-green-700">{company._count?.users || 0}</Badge>
                     </TableCell>
                     <TableCell>
-                      {new Date(company.created_at).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}
+                      {new Date(company.created_at).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US")}
                     </TableCell>
                   </TableRow>
                 ))}

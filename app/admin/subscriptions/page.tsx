@@ -52,7 +52,7 @@ interface Subscription {
 }
 
 export default function AdminSubscriptionsPage() {
-  const { language } = useLanguage()
+  const { locale, t } = useLanguage()
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [packages, setPackages] = useState<ServicePackage[]>([])
@@ -114,7 +114,7 @@ export default function AdminSubscriptionsPage() {
       console.error("Error loading data:", error)
       toast({
         variant: "destructive",
-        title: language === "vi" ? "Lỗi tải dữ liệu" : "Error loading data",
+        title: t("error-loading-data"),
         description: error instanceof Error ? error.message : "Unknown error",
       })
     } finally {
@@ -126,8 +126,8 @@ export default function AdminSubscriptionsPage() {
     if (!formData.company_id || !formData.package_id) {
       toast({
         variant: "destructive",
-        title: language === "vi" ? "Lỗi" : "Error",
-        description: language === "vi" ? "Vui lòng chọn công ty và gói dịch vụ" : "Please select company and package",
+        title: t("error"),
+        description: t("please-select-company-and-package"),
       })
       return
     }
@@ -162,9 +162,8 @@ export default function AdminSubscriptionsPage() {
       if (error) throw error
 
       toast({
-        title: language === "vi" ? "✅ Tạo đăng ký thành công" : "✅ Subscription created",
-        description:
-          language === "vi" ? "Đăng ký mới đã được tạo thành công" : "New subscription has been created successfully",
+        title: t("subscription-created"),
+        description: t("new-subscription-has-been-created-successfully"),
       })
 
       setShowCreateDialog(false)
@@ -174,7 +173,7 @@ export default function AdminSubscriptionsPage() {
       console.error("Error creating subscription:", error)
       toast({
         variant: "destructive",
-        title: language === "vi" ? "Lỗi tạo đăng ký" : "Error creating subscription",
+        title: t("error-creating-subscription"),
         description: error instanceof Error ? error.message : "Unknown error",
       })
     }
@@ -192,10 +191,10 @@ export default function AdminSubscriptionsPage() {
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
-      active: { label: language === "vi" ? "Đang hoạt động" : "Active", variant: "default" as const },
-      expired: { label: language === "vi" ? "Đã hết hạn" : "Expired", variant: "destructive" as const },
-      cancelled: { label: language === "vi" ? "Đã hủy" : "Cancelled", variant: "secondary" as const },
-      pending: { label: language === "vi" ? "Chờ xử lý" : "Pending", variant: "outline" as const },
+      active: { label: t("active"), variant: "default" as const },
+      expired: { label: t("expired"), variant: "destructive" as const },
+      cancelled: { label: t("cancelled"), variant: "secondary" as const },
+      pending: { label: t("pending"), variant: "outline" as const },
     }
 
     const statusInfo = statusMap[status as keyof typeof statusMap] || {
@@ -209,7 +208,7 @@ export default function AdminSubscriptionsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-lg">{language === "vi" ? "Đang tải..." : "Loading..."}</div>
+        <div className="text-lg">{t("loading")}</div>
       </div>
     )
   }
@@ -218,9 +217,7 @@ export default function AdminSubscriptionsPage() {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <p className="text-red-800 font-medium">
-            {language === "vi" ? "Bạn không có quyền truy cập trang này" : "You don't have access to this page"}
-          </p>
+          <p className="text-red-800 font-medium">{t("you-dont-have-access-to-this-page")}</p>
         </div>
       </div>
     )
@@ -236,12 +233,8 @@ export default function AdminSubscriptionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{language === "vi" ? "Quản lý Đăng ký" : "Subscriptions"}</h1>
-          <p className="text-muted-foreground mt-1">
-            {language === "vi"
-              ? "Quản lý đăng ký gói dịch vụ của các công ty"
-              : "Manage company service package subscriptions"}
-          </p>
+          <h1 className="text-3xl font-bold">{t("subscriptions")}</h1>
+          <p className="text-muted-foreground mt-1">{t("manage-company-service-package-subscriptions")}</p>
         </div>
         <Button
           onClick={() => {
@@ -250,7 +243,7 @@ export default function AdminSubscriptionsPage() {
           }}
         >
           <Plus className="h-4 w-4 mr-2" />
-          {language === "vi" ? "Thêm đăng ký" : "Add Subscription"}
+          {t("add-subscription")}
         </Button>
       </div>
 
@@ -258,9 +251,7 @@ export default function AdminSubscriptionsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Tổng đăng ký" : "Total Subscriptions"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("total-subscriptions")}</CardTitle>
             <Package className="h-5 w-5 text-blue-600" />
           </CardHeader>
           <CardContent>
@@ -270,9 +261,7 @@ export default function AdminSubscriptionsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Đang hoạt động" : "Active"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("active")}</CardTitle>
             <div className="h-3 w-3 rounded-full bg-green-500" />
           </CardHeader>
           <CardContent>
@@ -282,9 +271,7 @@ export default function AdminSubscriptionsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Đã hết hạn" : "Expired"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("expired")}</CardTitle>
             <Calendar className="h-5 w-5 text-red-500" />
           </CardHeader>
           <CardContent>
@@ -294,9 +281,7 @@ export default function AdminSubscriptionsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {language === "vi" ? "Doanh thu" : "Revenue"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("revenue")}</CardTitle>
             <span className="text-green-600 text-xl font-bold">$</span>
           </CardHeader>
           <CardContent>
@@ -308,29 +293,23 @@ export default function AdminSubscriptionsPage() {
       {/* Subscriptions Table */}
       <Card>
         <CardHeader>
-          <CardTitle>{language === "vi" ? "Danh sách đăng ký" : "Subscription List"}</CardTitle>
-          <CardDescription>
-            {language === "vi"
-              ? `${subscriptions.length} đăng ký trong hệ thống`
-              : `${subscriptions.length} subscriptions in the system`}
-          </CardDescription>
+          <CardTitle>{t("subscription-list")}</CardTitle>
+          <CardDescription>{`${subscriptions.length} ${t("subscriptions-in-the-system")}`}</CardDescription>
         </CardHeader>
         <CardContent>
           {subscriptions.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {language === "vi" ? "Chưa có đăng ký nào" : "No subscriptions yet"}
-            </div>
+            <div className="text-center py-12 text-muted-foreground">{t("no-subscriptions-yet")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{language === "vi" ? "Công ty" : "Company"}</TableHead>
-                  <TableHead>{language === "vi" ? "Gói dịch vụ" : "Package"}</TableHead>
-                  <TableHead>{language === "vi" ? "Ngày bắt đầu" : "Start Date"}</TableHead>
-                  <TableHead>{language === "vi" ? "Ngày kết thúc" : "End Date"}</TableHead>
-                  <TableHead>{language === "vi" ? "Trạng thái" : "Status"}</TableHead>
-                  <TableHead>{language === "vi" ? "Chu kỳ" : "Frequency"}</TableHead>
-                  <TableHead className="text-right">{language === "vi" ? "Giá" : "Price"}</TableHead>
+                  <TableHead>{t("company")}</TableHead>
+                  <TableHead>{t("package")}</TableHead>
+                  <TableHead>{t("start-date")}</TableHead>
+                  <TableHead>{t("end-date")}</TableHead>
+                  <TableHead>{t("status")}</TableHead>
+                  <TableHead>{t("frequency")}</TableHead>
+                  <TableHead className="text-right">{t("price")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -343,28 +322,26 @@ export default function AdminSubscriptionsPage() {
                           {sub.service_packages?.package_code}
                         </Badge>
                         <span className="text-sm">
-                          {language === "vi"
-                            ? sub.service_packages?.package_name_vi
-                            : sub.service_packages?.package_name}
+                          {locale === "vi" ? sub.service_packages?.package_name_vi : sub.service_packages?.package_name}
                         </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      {format(new Date(sub.start_date), "dd/MM/yyyy", { locale: language === "vi" ? vi : undefined })}
+                      {format(new Date(sub.start_date), "dd/MM/yyyy", { locale: locale === "vi" ? vi : undefined })}
                     </TableCell>
                     <TableCell>
-                      {format(new Date(sub.end_date), "dd/MM/yyyy", { locale: language === "vi" ? vi : undefined })}
+                      {format(new Date(sub.end_date), "dd/MM/yyyy", { locale: locale === "vi" ? vi : undefined })}
                     </TableCell>
                     <TableCell>{getStatusBadge(sub.status)}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">
                         {sub.payment_frequency === "monthly"
-                          ? language === "vi"
-                            ? "Tháng"
-                            : "Monthly"
-                          : language === "vi"
-                            ? "Năm"
-                            : "Yearly"}
+                          ? locale === "vi"
+                            ? t("monthly")
+                            : t("monthly")
+                          : locale === "vi"
+                            ? t("yearly")
+                            : t("yearly")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">${sub.price_paid?.toFixed(2) || "0.00"}</TableCell>
@@ -380,23 +357,19 @@ export default function AdminSubscriptionsPage() {
       <Dialog open={showCreateDialog} onOpenChange={(open) => !open && (setShowCreateDialog(false), resetForm())}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{language === "vi" ? "Thêm đăng ký mới" : "Add New Subscription"}</DialogTitle>
-            <DialogDescription>
-              {language === "vi"
-                ? "Tạo đăng ký gói dịch vụ cho công ty"
-                : "Create a service package subscription for a company"}
-            </DialogDescription>
+            <DialogTitle>{t("add-new-subscription")}</DialogTitle>
+            <DialogDescription>{t("create-a-service-package-subscription-for-a-company")}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="company">{language === "vi" ? "Công ty" : "Company"} *</Label>
+              <Label htmlFor="company">{t("company")} *</Label>
               <Select
                 value={formData.company_id}
                 onValueChange={(value) => setFormData({ ...formData, company_id: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={language === "vi" ? "Chọn công ty" : "Select company"} />
+                  <SelectValue placeholder={t("select-company")} />
                 </SelectTrigger>
                 <SelectContent>
                   {companies.map((company) => (
@@ -409,20 +382,20 @@ export default function AdminSubscriptionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="package">{language === "vi" ? "Gói dịch vụ" : "Package"} *</Label>
+              <Label htmlFor="package">{t("package")} *</Label>
               <Select
                 value={formData.package_id}
                 onValueChange={(value) => setFormData({ ...formData, package_id: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={language === "vi" ? "Chọn gói dịch vụ" : "Select package"} />
+                  <SelectValue placeholder={t("select-package")} />
                 </SelectTrigger>
                 <SelectContent>
                   {packages.map((pkg) => (
                     <SelectItem key={pkg.id} value={pkg.id}>
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs">{pkg.package_code}</span>
-                        <span>{language === "vi" ? pkg.package_name_vi : pkg.package_name}</span>
+                        <span>{locale === "vi" ? pkg.package_name_vi : pkg.package_name}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -431,9 +404,7 @@ export default function AdminSubscriptionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="payment_frequency">
-                {language === "vi" ? "Chu kỳ thanh toán" : "Payment Frequency"} *
-              </Label>
+              <Label htmlFor="payment_frequency">{t("payment-frequency")} *</Label>
               <Select
                 value={formData.payment_frequency}
                 onValueChange={(value: "monthly" | "yearly") => setFormData({ ...formData, payment_frequency: value })}
@@ -442,14 +413,14 @@ export default function AdminSubscriptionsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="monthly">{language === "vi" ? "Theo tháng" : "Monthly"}</SelectItem>
-                  <SelectItem value="yearly">{language === "vi" ? "Theo năm" : "Yearly"}</SelectItem>
+                  <SelectItem value="monthly">{t("monthly")}</SelectItem>
+                  <SelectItem value="yearly">{t("yearly")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="start_date">{language === "vi" ? "Ngày bắt đầu" : "Start Date"} *</Label>
+              <Label htmlFor="start_date">{t("start-date")} *</Label>
               <Input
                 id="start_date"
                 type="date"
@@ -459,7 +430,7 @@ export default function AdminSubscriptionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="duration">{language === "vi" ? "Thời hạn (tháng)" : "Duration (months)"} *</Label>
+              <Label htmlFor="duration">{t("duration-months")} *</Label>
               <Input
                 id="duration"
                 type="number"
@@ -479,11 +450,9 @@ export default function AdminSubscriptionsPage() {
                 resetForm()
               }}
             >
-              {language === "vi" ? "Hủy" : "Cancel"}
+              {t("cancel")}
             </Button>
-            <Button onClick={handleCreateSubscription}>
-              {language === "vi" ? "Tạo đăng ký" : "Create Subscription"}
-            </Button>
+            <Button onClick={handleCreateSubscription}>{t("create-subscription")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -36,7 +36,7 @@ interface Profile {
 }
 
 export default function AdminUsersPage() {
-  const { t, language } = useLanguage()
+  const { locale, t } = useLanguage()
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [companies, setCompanies] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -44,6 +44,11 @@ export default function AdminUsersPage() {
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
   const [showCreateCompany, setShowCreateCompany] = useState(false)
   const [newCompanyName, setNewCompanyName] = useState("")
+  const [newCompanyRegistrationNumber, setNewCompanyRegistrationNumber] = useState("")
+  const [newCompanyAddress, setNewCompanyAddress] = useState("")
+  const [newCompanyPhone, setNewCompanyPhone] = useState("")
+  const [newCompanyEmail, setNewCompanyEmail] = useState("")
+  const [newCompanyContactPerson, setNewCompanyContactPerson] = useState("")
   const [isCreatingCompany, setIsCreatingCompany] = useState(false)
   const [showEnvWarning, setShowEnvWarning] = useState(false)
   const [email, setEmail] = useState("")
@@ -75,32 +80,19 @@ export default function AdminUsersPage() {
   }
 
   const loadData = async () => {
-    const supabase = createClient()
+    const response = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    const { data: currentProfile } = await supabase
-      .from("profiles")
-      .select("role, company_id")
-      .eq("id", user?.id)
-      .single()
-
-    let profilesQuery = supabase.from("profiles").select("*").order("created_at", { ascending: false })
-
-    if (currentProfile && !isSystemAdmin(currentProfile.role)) {
-      // Regular admin only sees users from their company
-      profilesQuery = profilesQuery.eq("company_id", currentProfile.company_id)
+    if (response.ok) {
+      const data = await response.json()
+      setProfiles(data.profiles || [])
+      setCompanies(data.companies || [])
+    } else {
+      console.error("[v0] Failed to load users:", await response.text())
     }
-
-    const { data: profilesData } = await profilesQuery
-
-    if (profilesData) setProfiles(profilesData)
-
-    // Load companies
-    const { data: companiesData } = await supabase.from("companies").select("id, name").order("name")
-
-    if (companiesData) setCompanies(companiesData)
   }
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -181,15 +173,28 @@ export default function AdminUsersPage() {
   }
 
   const handleCreateCompany = async () => {
-    setIsCreatingCompany(true)
-    setError(null)
-    setSuccess(null)
+    if (!newCompanyName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi",
+        description: "Vui lòng nhập tên công ty",
+      })
+      return
+    }
 
+    setIsCreatingCompany(true)
     try {
-      const result = await createCompany({ name: newCompanyName })
+      const result = await createCompany({
+        name: newCompanyName,
+        registrationNumber: newCompanyRegistrationNumber,
+        address: newCompanyAddress,
+        phone: newCompanyPhone,
+        email: newCompanyEmail,
+        contactPerson: newCompanyContactPerson,
+        displayName: newCompanyName,
+      })
 
       if (result.error) {
-        setError(result.error)
         toast({
           variant: "destructive",
           title: "❌ Lỗi tạo công ty",
@@ -198,20 +203,27 @@ export default function AdminUsersPage() {
         return
       }
 
-      setSuccess("Tạo công ty thành công!")
-      toast({
-        title: "✅ Tạo công ty thành công!",
-        description: `Đã tạo công ty "${newCompanyName}" trong hệ thống`,
-      })
+      if (result.company) {
+        setCompanyId(result.company.id)
+        toast({
+          title: "✅ Tạo công ty thành công!",
+          description: `Đã tạo công ty ${newCompanyName}`,
+        })
+      }
+
       setNewCompanyName("")
+      setNewCompanyRegistrationNumber("")
+      setNewCompanyAddress("")
+      setNewCompanyPhone("")
+      setNewCompanyEmail("")
+      setNewCompanyContactPerson("")
       setShowCreateCompany(false)
-      loadData()
-    } catch (err: any) {
-      setError(err.message || "Có lỗi xảy ra khi tạo công ty")
+      await loadData()
+    } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "❌ Lỗi không xác định",
-        description: err.message || "Có lỗi xảy ra khi tạo công ty",
+        title: "❌ Lỗi",
+        description: error.message || "Có lỗi xảy ra khi tạo công ty",
       })
     } finally {
       setIsCreatingCompany(false)
@@ -412,6 +424,12 @@ export default function AdminUsersPage() {
                         strokeWidth={2}
                         d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                       />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
                     </svg>
                     <div className="flex-1">
                       <p className="font-semibold text-amber-900">Vai trò được chọn: Admin</p>
@@ -512,20 +530,20 @@ export default function AdminUsersPage() {
                     <SelectContent>
                       {currentUserProfile && isSystemAdmin(currentUserProfile.role) && (
                         <SelectItem value={UserRole.SYSTEM_ADMIN} className="bg-purple-50 font-bold">
-                          🔒 {getRoleDisplayName(UserRole.SYSTEM_ADMIN, language)} - Toàn quyền hệ thống
+                          🔒 {getRoleDisplayName(UserRole.SYSTEM_ADMIN, locale)} - Toàn quyền hệ thống
                         </SelectItem>
                       )}
                       <SelectItem value={UserRole.ADMIN}>
-                        {getRoleDisplayName(UserRole.ADMIN, language)} - Quản trị công ty
+                        {getRoleDisplayName(UserRole.ADMIN, locale)} - Quản trị công ty
                       </SelectItem>
                       <SelectItem value={UserRole.MANAGER}>
-                        {getRoleDisplayName(UserRole.MANAGER, language)} - Quản lý cơ sở
+                        {getRoleDisplayName(UserRole.MANAGER, locale)} - Quản lý cơ sở
                       </SelectItem>
                       <SelectItem value={UserRole.OPERATOR}>
-                        {getRoleDisplayName(UserRole.OPERATOR, language)} - Nhân viên vận hành
+                        {getRoleDisplayName(UserRole.OPERATOR, locale)} - Nhân viên vận hành
                       </SelectItem>
                       <SelectItem value={UserRole.VIEWER}>
-                        {getRoleDisplayName(UserRole.VIEWER, language)} - Chỉ xem
+                        {getRoleDisplayName(UserRole.VIEWER, locale)} - Chỉ xem
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -544,7 +562,17 @@ export default function AdminUsersPage() {
                         )}
                         {companies.map((company) => (
                           <SelectItem key={company.id} value={company.id}>
-                            {company.name}
+                            <div className="flex flex-col">
+                              <span className="font-medium">{company.name}</span>
+                              {company.display_name && company.display_name !== company.name && (
+                                <span className="text-xs text-muted-foreground">({company.display_name})</span>
+                              )}
+                              {company.registration_number && (
+                                <span className="text-xs text-muted-foreground">
+                                  MST: {company.registration_number}
+                                </span>
+                              )}
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -556,28 +584,98 @@ export default function AdminUsersPage() {
                     )}
                   </div>
                   {showCreateCompany && (
-                    <div className="mt-2 p-3 border rounded-lg bg-muted/50 space-y-2">
-                      <Label htmlFor="newCompanyName" className="text-sm">
-                        Tên công ty mới
-                      </Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="newCompanyName"
-                          value={newCompanyName}
-                          onChange={(e) => setNewCompanyName(e.target.value)}
-                          placeholder="Nhập tên công ty"
-                          disabled={isCreatingCompany}
-                        />
+                    <Card className="mt-3">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">Tạo công ty mới</CardTitle>
+                        <CardDescription className="text-sm">Nhập đầy đủ thông tin công ty</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="newCompanyName" className="text-sm">
+                            Tên công ty *
+                          </Label>
+                          <Input
+                            id="newCompanyName"
+                            value={newCompanyName}
+                            onChange={(e) => setNewCompanyName(e.target.value)}
+                            placeholder="Công ty TNHH ABC"
+                            disabled={isCreatingCompany}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="newCompanyRegistrationNumber" className="text-sm">
+                            Mã số thuế
+                          </Label>
+                          <Input
+                            id="newCompanyRegistrationNumber"
+                            value={newCompanyRegistrationNumber}
+                            onChange={(e) => setNewCompanyRegistrationNumber(e.target.value)}
+                            placeholder="0123456789"
+                            disabled={isCreatingCompany}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="newCompanyAddress" className="text-sm">
+                            Địa chỉ
+                          </Label>
+                          <Input
+                            id="newCompanyAddress"
+                            value={newCompanyAddress}
+                            onChange={(e) => setNewCompanyAddress(e.target.value)}
+                            placeholder="123 Đường ABC, Quận XYZ, TP. HCM"
+                            disabled={isCreatingCompany}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="newCompanyPhone" className="text-sm">
+                              Số điện thoại
+                            </Label>
+                            <Input
+                              id="newCompanyPhone"
+                              value={newCompanyPhone}
+                              onChange={(e) => setNewCompanyPhone(e.target.value)}
+                              placeholder="0901234567"
+                              disabled={isCreatingCompany}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="newCompanyEmail" className="text-sm">
+                              Email
+                            </Label>
+                            <Input
+                              id="newCompanyEmail"
+                              type="email"
+                              value={newCompanyEmail}
+                              onChange={(e) => setNewCompanyEmail(e.target.value)}
+                              placeholder="contact@company.com"
+                              disabled={isCreatingCompany}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="newCompanyContactPerson" className="text-sm">
+                            Người liên hệ
+                          </Label>
+                          <Input
+                            id="newCompanyContactPerson"
+                            value={newCompanyContactPerson}
+                            onChange={(e) => setNewCompanyContactPerson(e.target.value)}
+                            placeholder="Nguyễn Văn A"
+                            disabled={isCreatingCompany}
+                          />
+                        </div>
                         <Button
                           type="button"
                           size="sm"
                           onClick={handleCreateCompany}
                           disabled={isCreatingCompany || !newCompanyName.trim()}
+                          className="w-full"
                         >
-                          {isCreatingCompany ? "Đang tạo..." : "Tạo"}
+                          {isCreatingCompany ? "Đang tạo..." : "Tạo công ty"}
                         </Button>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   )}
                 </div>
               </div>
@@ -655,7 +753,7 @@ export default function AdminUsersPage() {
                 <TableRow key={profile.id}>
                   <TableCell className="font-medium">{profile.full_name}</TableCell>
                   <TableCell>
-                    <Badge className={getRoleBadge(profile.role)}>{getRoleDisplayName(profile.role, language)}</Badge>
+                    <Badge className={getRoleBadge(profile.role)}>{getRoleDisplayName(profile.role, locale)}</Badge>
                   </TableCell>
                   <TableCell>{profile.phone || "-"}</TableCell>
                   <TableCell>{new Date(profile.created_at).toLocaleDateString("vi-VN")}</TableCell>

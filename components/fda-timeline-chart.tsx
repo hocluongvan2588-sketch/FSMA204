@@ -2,16 +2,18 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Clock, AlertTriangle } from "lucide-react"
+import { Clock, AlertTriangle, Shield } from "lucide-react"
 import { useEffect, useState } from "react"
 
 interface FDARegistration {
   id: string
   facility_name: string
   registration_date: string
-  renewal_date: string
   expiry_date: string
   fda_registration_number: string
+  agent_registration_date?: string
+  agent_expiry_date?: string
+  agent_registration_years?: number
 }
 
 interface FDATimelineChartProps {
@@ -29,33 +31,146 @@ export function FDATimelineChart({ registrations }: FDATimelineChartProps) {
     return () => clearInterval(interval)
   }, [])
 
-  // Calculate timeline positions
-  const getTimelineData = (reg: FDARegistration) => {
-    const registrationDate = new Date(reg.registration_date)
-    const renewalDate = new Date(reg.renewal_date)
-    const expiryDate = new Date(reg.expiry_date)
+  const getFDACycleRange = () => {
+    const currentYear = currentDate.getFullYear()
 
-    const totalDays = Math.floor((expiryDate.getTime() - registrationDate.getTime()) / (1000 * 60 * 60 * 24))
-    const daysFromStart = Math.floor((currentDate.getTime() - registrationDate.getTime()) / (1000 * 60 * 60 * 24))
-    const daysToRenewal = Math.floor((renewalDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24))
-    const daysToExpiry = Math.floor((expiryDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24))
+    // FDA cycles end on December 31 of even years
+    let cycleEndYear = currentYear
+    if (currentYear % 2 !== 0) {
+      // If odd year, next even year
+      cycleEndYear = currentYear + 1
+    }
 
+    const cycleStartYear = cycleEndYear - 2
+
+    // Cycles are from Jan 1 of start year to Dec 31 of end year
+    const cycleStart = new Date(cycleStartYear, 0, 1) // Jan 1
+    const cycleEnd = new Date(cycleEndYear, 11, 31, 23, 59, 59) // Dec 31
+
+    return { cycleStart, cycleEnd, cycleStartYear, cycleEndYear }
+  }
+
+  const getFDATimelineData = (reg: FDARegistration) => {
+    const { cycleStart, cycleEnd, cycleStartYear, cycleEndYear } = getFDACycleRange()
+
+    // Calculate total days in this 2-year cycle
+    const totalDays = Math.floor((cycleEnd.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24))
+
+    // Calculate days elapsed from cycle start to today
+    const daysFromStart = Math.floor((currentDate.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24))
+
+    // Calculate days remaining to cycle end
+    const daysToExpiry = Math.floor((cycleEnd.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+    // Progress percentage within the 2-year cycle
     const progressPercent = Math.min(Math.max((daysFromStart / totalDays) * 100, 0), 100)
-    const renewalPercent = Math.min(
-      Math.max(
-        (Math.floor((renewalDate.getTime() - registrationDate.getTime()) / (1000 * 60 * 60 * 24)) / totalDays) * 100,
-        0,
-      ),
-      100,
-    )
+
+    // Warning logic: Green > 90 days, Yellow 30-90 days, Red < 30 days or expired
+    let status: "safe" | "warning" | "urgent" | "expired"
+    if (daysToExpiry < 0) {
+      status = "expired"
+    } else if (daysToExpiry < 30) {
+      status = "urgent"
+    } else if (daysToExpiry < 90) {
+      status = "warning"
+    } else {
+      status = "safe"
+    }
 
     return {
       progressPercent,
-      renewalPercent,
-      daysToRenewal,
       daysToExpiry,
-      isUrgent: daysToRenewal < 30 && daysToRenewal >= 0,
-      isPastDue: daysToRenewal < 0,
+      status,
+      cycleStart,
+      cycleEnd,
+      cycleLabel: `${cycleStartYear}-${cycleEndYear}`,
+    }
+  }
+
+  const getAgentTimelineData = (reg: FDARegistration) => {
+    if (!reg.agent_registration_date || !reg.agent_expiry_date || !reg.agent_registration_years) {
+      return null
+    }
+
+    const agentStartDate = new Date(reg.agent_registration_date)
+    const agentExpiryDate = new Date(reg.agent_expiry_date)
+
+    // Agent cycle is dynamic (1-3 years typically)
+    const totalDays = reg.agent_registration_years * 365
+
+    const daysFromStart = Math.floor((currentDate.getTime() - agentStartDate.getTime()) / (1000 * 60 * 60 * 24))
+    const daysToExpiry = Math.floor((agentExpiryDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+    const progressPercent = Math.min(Math.max((daysFromStart / totalDays) * 100, 0), 100)
+
+    // Warning logic for Agent
+    let status: "safe" | "warning" | "urgent" | "expired"
+    if (daysToExpiry < 0) {
+      status = "expired"
+    } else if (daysToExpiry < 30) {
+      status = "urgent"
+    } else if (daysToExpiry < 90) {
+      status = "warning"
+    } else {
+      status = "safe"
+    }
+
+    return {
+      progressPercent,
+      daysToExpiry,
+      status,
+      agentStartDate,
+      agentExpiryDate,
+      years: reg.agent_registration_years,
+    }
+  }
+
+  const getStatusBadge = (status: "safe" | "warning" | "urgent" | "expired", daysToExpiry: number) => {
+    if (status === "expired") {
+      return (
+        <Badge variant="destructive" className="gap-1 animate-pulse">
+          <AlertTriangle className="h-3 w-3" />
+          Quá hạn
+        </Badge>
+      )
+    }
+
+    if (status === "urgent") {
+      return (
+        <Badge variant="destructive" className="gap-1 animate-pulse">
+          <AlertTriangle className="h-3 w-3" />
+          {daysToExpiry} ngày
+        </Badge>
+      )
+    }
+
+    if (status === "warning") {
+      return (
+        <Badge className="gap-1 bg-amber-500 text-white border-amber-600">
+          <Clock className="h-3 w-3" />
+          {daysToExpiry} ngày
+        </Badge>
+      )
+    }
+
+    return (
+      <Badge className="gap-1 bg-emerald-500 text-white border-emerald-600">
+        <Clock className="h-3 w-3" />
+        {daysToExpiry} ngày
+      </Badge>
+    )
+  }
+
+  const getProgressBarColor = (status: "safe" | "warning" | "urgent" | "expired") => {
+    switch (status) {
+      case "expired":
+        return "bg-gradient-to-r from-red-500 to-red-600"
+      case "urgent":
+        return "bg-gradient-to-r from-red-400 to-red-500"
+      case "warning":
+        return "bg-gradient-to-r from-amber-400 to-amber-500"
+      default:
+        return "bg-gradient-to-r from-emerald-400 to-emerald-500"
     }
   }
 
@@ -81,76 +196,123 @@ export function FDATimelineChart({ registrations }: FDATimelineChartProps) {
           </div>
         ) : (
           registrations.map((reg) => {
-            const timeline = getTimelineData(reg)
+            const fdaTimeline = getFDATimelineData(reg)
+            const agentTimeline = getAgentTimelineData(reg)
 
             return (
-              <div key={reg.id} className="space-y-3">
+              <div key={reg.id} className="space-y-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <p className="font-semibold text-foreground">{reg.facility_name}</p>
                     <p className="text-sm text-muted-foreground">#{reg.fda_registration_number}</p>
                   </div>
-                  {timeline.isUrgent && (
-                    <Badge variant="destructive" className="gap-1 animate-pulse">
-                      <AlertTriangle className="h-3 w-3" />
-                      {timeline.daysToRenewal} ngày
-                    </Badge>
-                  )}
-                  {timeline.isPastDue && (
-                    <Badge variant="destructive" className="gap-1 animate-pulse">
-                      <AlertTriangle className="h-3 w-3" />
-                      Quá hạn
-                    </Badge>
-                  )}
-                  {!timeline.isUrgent && !timeline.isPastDue && (
-                    <Badge variant="secondary">{timeline.daysToRenewal} ngày</Badge>
-                  )}
                 </div>
 
-                <div className="relative">
-                  {/* Background bar */}
-                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    {/* Progress bar */}
-                    <div
-                      className={`h-full transition-all duration-500 ${
-                        timeline.isPastDue
-                          ? "bg-gradient-to-r from-red-500 to-red-600"
-                          : timeline.isUrgent
-                            ? "bg-gradient-to-r from-amber-400 to-amber-500"
-                            : "bg-gradient-to-r from-emerald-400 to-emerald-500"
-                      }`}
-                      style={{ width: `${timeline.progressPercent}%` }}
-                    />
+                {/* FDA Timeline */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-300">📋 Đăng ký FDA</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Theo 21 CFR Part 1, Subpart H - Gia hạn mỗi 2 năm
+                      </p>
+                    </div>
+                    {getStatusBadge(fdaTimeline.status, fdaTimeline.daysToExpiry)}
+                  </div>
 
-                    {/* Renewal marker */}
-                    <div
-                      className="absolute top-0 bottom-0 w-1 bg-blue-600"
-                      style={{ left: `${timeline.renewalPercent}%` }}
-                    >
-                      <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                        <span className="text-xs font-medium text-blue-600">Gia hạn</span>
+                  <div className="relative">
+                    {/* Background bar */}
+                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                      {/* Progress bar */}
+                      <div
+                        className={`h-full transition-all duration-500 ${getProgressBarColor(fdaTimeline.status)}`}
+                        style={{ width: `${fdaTimeline.progressPercent}%` }}
+                      />
+
+                      {/* Today marker */}
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-blue-600"
+                        style={{ left: `${fdaTimeline.progressPercent}%` }}
+                      >
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                          <Badge
+                            variant="outline"
+                            className="text-xs h-5 px-2 bg-white dark:bg-slate-900 border-blue-600"
+                          >
+                            Hôm nay
+                          </Badge>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Today marker */}
-                    <div
-                      className="absolute top-0 bottom-0 w-0.5 bg-red-600"
-                      style={{ left: `${timeline.progressPercent}%` }}
-                    >
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                        <Badge variant="destructive" className="text-xs h-5 px-2">
-                          Hôm nay
-                        </Badge>
+                    {/* Timeline labels */}
+                    <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                      <span>{fdaTimeline.cycleStart.toLocaleDateString("vi-VN")}</span>
+                      <span className="font-medium text-blue-600">{fdaTimeline.cycleLabel}</span>
+                      <span>{fdaTimeline.cycleEnd.toLocaleDateString("vi-VN")}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Agent Timeline */}
+                {agentTimeline && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          <Shield className="inline h-4 w-4 mr-1" />
+                          US Agent
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Theo 21 CFR 1.33(b) - Đại diện tại Hoa Kỳ bắt buộc
+                        </p>
+                      </div>
+                      {getStatusBadge(agentTimeline.status, agentTimeline.daysToExpiry)}
+                    </div>
+
+                    <div className="relative">
+                      {/* Background bar */}
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                        {/* Progress bar */}
+                        <div
+                          className={`h-full transition-all duration-500 ${getProgressBarColor(agentTimeline.status)}`}
+                          style={{ width: `${agentTimeline.progressPercent}%` }}
+                        />
+
+                        {/* Today marker */}
+                        <div
+                          className="absolute top-0 bottom-0 w-0.5 bg-blue-600"
+                          style={{ left: `${agentTimeline.progressPercent}%` }}
+                        >
+                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                            <Badge
+                              variant="outline"
+                              className="text-xs h-5 px-2 bg-white dark:bg-slate-900 border-blue-600"
+                            >
+                              Hôm nay
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Timeline labels */}
+                      <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                        <span>{agentTimeline.agentStartDate.toLocaleDateString("vi-VN")}</span>
+                        <span>{agentTimeline.agentExpiryDate.toLocaleDateString("vi-VN")}</span>
                       </div>
                     </div>
                   </div>
+                )}
 
-                  {/* Timeline labels */}
-                  <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                    <span>{new Date(reg.registration_date).toLocaleDateString("vi-VN")}</span>
-                    <span>{new Date(reg.expiry_date).toLocaleDateString("vi-VN")}</span>
+                {/* Warning if no Agent data */}
+                {!agentTimeline && (
+                  <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+                    <p className="text-sm text-red-700 dark:text-red-300 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span className="font-medium">Chưa có thông tin US Agent - FDA mất hiệu lực ngay!</span>
+                    </p>
                   </div>
-                </div>
+                )}
               </div>
             )
           })

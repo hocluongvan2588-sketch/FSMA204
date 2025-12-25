@@ -11,12 +11,13 @@ export interface QuotaInfo {
 export async function getQuotaInfo(companyId: string): Promise<QuotaInfo> {
   const supabase = createClient()
 
-  // Get subscription info to get quota limit
   const { data: subscription } = await supabase
     .from("company_subscriptions")
     .select("*, service_packages(max_storage_gb)")
     .eq("company_id", companyId)
-    .eq("subscription_status", "active")
+    .in("subscription_status", ["active", "trial"])
+    .order("start_date", { ascending: false })
+    .limit(1)
     .single()
 
   // Default limit if no subscription (free tier)

@@ -65,7 +65,9 @@ export function UserProfileMenu({ user, profile }: UserProfileMenuProps) {
         className="flex items-center gap-2 hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors group"
       >
         <Avatar className="h-9 w-9 border-2 border-emerald-100">
-          <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt={profile?.full_name || user.email} />
+          {profile?.avatar_url && (
+            <AvatarImage src={profile.avatar_url || "/placeholder.svg"} alt={profile?.full_name || user.email} />
+          )}
           <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white text-sm font-semibold">
             {getInitials(profile?.full_name)}
           </AvatarFallback>
@@ -83,7 +85,12 @@ export function UserProfileMenu({ user, profile }: UserProfileMenuProps) {
             <div className="p-4 border-b bg-gradient-to-br from-emerald-50 to-emerald-100">
               <div className="flex items-center gap-3 mb-2">
                 <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
-                  <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt={profile?.full_name || user.email} />
+                  {profile?.avatar_url && (
+                    <AvatarImage
+                      src={profile.avatar_url || "/placeholder.svg"}
+                      alt={profile?.full_name || user.email}
+                    />
+                  )}
                   <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-semibold">
                     {getInitials(profile?.full_name)}
                   </AvatarFallback>

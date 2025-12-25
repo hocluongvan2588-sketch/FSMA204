@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Save, KeyRound, User, Mail, Phone, Building } from "lucide-react"
+import { ArrowLeft, Save, KeyRound, User, Mail, Phone, Building, Factory, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -20,6 +20,7 @@ interface UserProfile {
   phone: string | null
   company_id: string | null
   language_preference: string
+  organization_type: string | null
   created_at: string
   updated_at: string
 }
@@ -40,6 +41,9 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const [companies, setCompanies] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
 
   // Form states
   const [fullName, setFullName] = useState("")
@@ -47,11 +51,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const [phone, setPhone] = useState("")
   const [companyId, setCompanyId] = useState("")
   const [languagePreference, setLanguagePreference] = useState("vi")
-
-  // Password change states
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [organizationType, setOrganizationType] = useState("")
 
   useEffect(() => {
     loadUserData()
@@ -83,6 +83,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
       setPhone(data.profile.phone || "")
       setCompanyId(data.profile.company_id || "")
       setLanguagePreference(data.profile.language_preference || "vi")
+      setOrganizationType(data.profile.organization_type || "")
 
       setAuthData({
         email: data.auth.email,
@@ -130,6 +131,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
           phone: phone || null,
           company_id: companyId || null,
           language_preference: languagePreference,
+          organization_type: organizationType || null,
         }),
       })
 
@@ -218,6 +220,16 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
     }
     return config[role] || config.viewer
   }
+
+  const organizationTypes = [
+    { value: "farm", label: "Farm - Trang trại", ctes: "Harvest, Cooling, Shipping" },
+    { value: "packing_house", label: "Packing House - Cơ sở đóng gói", ctes: "Cooling, Packing, Shipping" },
+    { value: "processor", label: "Processor - Cơ sở chế biến", ctes: "Receiving, Transformation, Shipping" },
+    { value: "distributor", label: "Distributor - Nhà phân phối", ctes: "Receiving, Shipping" },
+    { value: "retailer", label: "Retailer - Nhà bán lẻ", ctes: "Receiving" },
+    { value: "importer", label: "Importer - Nhà nhập khẩu", ctes: "First Receiving, Receiving" },
+    { value: "port", label: "Port Operator - Cảng biển", ctes: "First Receiving" },
+  ]
 
   if (isLoading) {
     return (
@@ -354,6 +366,40 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                       <SelectItem value="en">English</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="organizationType">Loại tổ chức (FSMA 204)</Label>
+                    <a
+                      href="https://www.fda.gov/food/food-safety-modernization-act-fsma/fsma-final-rule-requirements-additional-traceability-records-certain-foods"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      Quy định FDA <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Factory className="h-4 w-4 text-muted-foreground" />
+                    <Select value={organizationType} onValueChange={setOrganizationType}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn loại tổ chức" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Chưa xác định</SelectItem>
+                        {organizationTypes.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            <div className="flex flex-col">
+                              <span>{type.label}</span>
+                              <span className="text-xs text-muted-foreground">CTE: {type.ctes}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Xác định loại CTE mà user được phép tạo theo FSMA 204</p>
                 </div>
               </div>
 

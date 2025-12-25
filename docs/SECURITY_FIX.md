@@ -45,6 +45,27 @@
 - Company admins can only manage users within their own company
 - Enhanced validation checks before user creation/deletion
 
+### 4. Removed Duplicate Company Pages
+**Problem**: Two routes did the same thing - `/dashboard/company` and `/admin/my-company`
+
+**Fix Applied**:
+- Deleted `/dashboard/company` and its sub-routes (`create`, `edit`)
+- Kept `/admin/my-company` as the single source of truth for company information
+- Updated all navigation links to use `/admin/my-company`
+- Removed company menu item from dashboard navigation
+
+**Files Deleted**:
+- `app/dashboard/company/page.tsx`
+- `app/dashboard/company/create/page.tsx`
+- `app/dashboard/company/edit/page.tsx`
+
+**Files Updated**:
+- `components/dashboard-nav.tsx` - Removed company menu item
+- `components/admin-nav.tsx` - No changes needed (already uses `/admin/my-company`)
+- `lib/utils/smart-menu.ts` - Removed company route reference
+- `docs/PERMISSIONS.md` - Updated route table
+- `docs/SECURITY_FIX.md` - Added this section
+
 ## Verification Steps
 
 ### Test 1: Data Isolation
@@ -67,6 +88,11 @@
 2. Try to view/edit users from Company B (should be blocked by RLS)
 3. Try to create admin/system_admin users (should show error)
 4. Try to delete another admin user (should show error)
+
+### Test 4: Duplicate Company Pages Removed
+1. Login as system admin
+2. Navigate to `/dashboard/company` - should be redirected to `/admin/my-company`
+3. Verify that `/admin/my-company` is the only route for company information
 
 ## Database Schema
 
@@ -105,3 +131,5 @@ All tables now have RLS enabled:
 - [ ] Company admin can see display name in My Company page
 - [ ] RLS policies prevent direct database access to other companies' data
 - [ ] All statistics are properly scoped by company
+- [ ] System admin is redirected from `/dashboard/company` to `/admin/my-company`
+- [ ] `/admin/my-company` is the only route for company information

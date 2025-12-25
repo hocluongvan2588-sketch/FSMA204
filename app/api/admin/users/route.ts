@@ -14,7 +14,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { data: profile } = await supabase.from("profiles").select("role, company_id").eq("id", user.id).single()
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, company_id, organization_type")
+      .eq("id", user.id)
+      .single()
 
     if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
@@ -26,14 +30,15 @@ export async function POST(request: NextRequest) {
 
     const isSystemAdmin = profile.role === "system_admin"
 
-    // Use service role to query users
     const serviceClient = createServiceRoleClient()
 
-    let profilesQuery = serviceClient.from("profiles").select("*").order("created_at", { ascending: false })
+    let profilesQuery = serviceClient
+      .from("profiles")
+      .select("id, full_name, role, phone, created_at, organization_type, allowed_cte_types, company_id")
+      .order("created_at", { ascending: false })
 
     if (!isSystemAdmin) {
       if (!profile.company_id) {
-        // Admin without company can't see any users
         return NextResponse.json({ profiles: [], companies: [] })
       }
       profilesQuery = profilesQuery.eq("company_id", profile.company_id)
@@ -41,7 +46,6 @@ export async function POST(request: NextRequest) {
 
     const { data: profiles } = await profilesQuery
 
-    // Load companies based on access level
     let companiesQuery = serviceClient.from("companies").select("id, name, display_name").order("name")
 
     if (!isSystemAdmin && profile.company_id) {

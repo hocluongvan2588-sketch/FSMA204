@@ -50,23 +50,13 @@ export const fsmaTourSteps: TourStep[] = [
     category: "setup",
   },
 
-  {
-    target: '[data-tour="fda-registration"]',
-    title: "1️⃣ Thiết lập: Đăng ký FDA & US Agent",
-    content:
-      "**Bắt buộc với nhà nhập khẩu**: Mỗi cơ sở phải có **FDA Registration Number** và chỉ định **US Agent** (đại diện tại Mỹ). FDA có thể yêu cầu hồ sơ bất cứ lúc nào trong vòng **24 giờ**.",
-    placement: "right",
-    action: "Xem Đăng ký FDA",
-    category: "setup",
-  },
-
   // PHASE 2: RECORD - Ghi nhận sự kiện
   {
-    target: '[data-tour="tlc-codes"]',
+    target: '[data-tour="tlc-codes-kpi"]',
     title: "2️⃣ Ghi nhận: Tạo Traceability Lot Code (TLC)",
     content:
       "**TLC là trái tim của FSMA 204**. Mỗi lô hàng phải có một **mã TLC duy nhất** để theo dõi từ farm đến fork. TLC thường bao gồm: **Mã sản phẩm + Ngày thu hoạch + Mã vùng trồng**. Ví dụ: `SPINACH-2025-0123-FIELD-A`",
-    placement: "right",
+    placement: "bottom",
     action: "Tạo mã TLC",
     category: "record",
     highlightPadding: 10,
@@ -86,7 +76,7 @@ export const fsmaTourSteps: TourStep[] = [
     target: '[data-tour="cte-events"]',
     title: "2️⃣ Ghi nhận: Tạo Critical Tracking Events (CTE)",
     content:
-      "**7 loại CTE bắt buộc**: 1) **Harvesting** (Thu hoạch), 2) **Cooling** (Làm lạnh), 3) **Initial Packing** (Đóng gói lần đầu), 4) **First Receiving** (Nhận hàng lần đầu), 5) **Shipping** (Gửi hàng), 6) **Receiving** (Nhận hàng), 7) **Transformation** (Chế biến). Mỗi CTE cần ghi đầy đủ **KDE**.",
+      "**6-7 loại CTE bắt buộc**: 1) **Harvesting** (Thu hoạch), 2) **Cooling** (Làm lạnh), 3) **Initial Packing** (Đóng gói lần đầu), 4) **Receiving** (Nhận hàng), 5) **Shipping** (Gửi hàng), 6) **Transformation** (Chế biến), 7) **First Land-based Receiving** (dành cho import). Mỗi CTE cần ghi đầy đủ **KDE**.",
     placement: "right",
     action: "Tạo sự kiện CTE",
     category: "record",

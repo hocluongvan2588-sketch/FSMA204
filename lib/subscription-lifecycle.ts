@@ -155,7 +155,7 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
       subscription_status,
       trial_end_date,
       end_date,
-      service_packages (name)
+      service_packages (package_name)
     `,
     )
     .eq("company_id", companyId)
@@ -175,7 +175,7 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
     status: data.subscription_status as any,
     trialEndDate: data.trial_end_date ? new Date(data.trial_end_date) : null,
     endDate: new Date(data.end_date),
-    packageName: pkg?.name || "Unknown",
+    packageName: pkg?.package_name || "Unknown",
   }
 }
 
@@ -195,6 +195,18 @@ export async function getDaysRemaining(companyId: string): Promise<number> {
 
   if (!status) {
     return 0
+  }
+
+  const supabase = await createClient()
+  const { data: subscription } = await supabase
+    .from("company_subscriptions")
+    .select("service_packages(package_code)")
+    .eq("company_id", companyId)
+    .single()
+
+  const pkg = subscription?.service_packages as any
+  if (pkg?.package_code === "FREE") {
+    return -1 // -1 means forever free, never expires
   }
 
   const now = new Date()

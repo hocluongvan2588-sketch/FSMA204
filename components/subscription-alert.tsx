@@ -33,7 +33,7 @@ export function SubscriptionAlert({ companyId }: SubscriptionAlertProps) {
     checkSubscription()
   }, [companyId])
 
-  if (loading || daysRemaining === null || daysRemaining > 7) {
+  if (loading || daysRemaining === null || daysRemaining === -1 || daysRemaining > 7) {
     return null
   }
 

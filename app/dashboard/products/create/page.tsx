@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { createProduct } from "@/app/actions/products"
+import { ExternalLink } from "lucide-react"
 
 export default function CreateProductPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -148,11 +149,22 @@ export default function CreateProductPage() {
               </div>
 
               <div className="space-y-3 pt-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="is_ftl" checked={isFTL} onCheckedChange={(checked) => setIsFTL(checked === true)} />
-                  <Label htmlFor="is_ftl" className="text-sm font-normal cursor-pointer">
-                    Sản phẩm thuộc Food Traceability List (FTL)
-                  </Label>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="is_ftl" checked={isFTL} onCheckedChange={(checked) => setIsFTL(checked === true)} />
+                    <Label htmlFor="is_ftl" className="text-sm font-normal cursor-pointer">
+                      Sản phẩm thuộc Food Traceability List (FTL)
+                    </Label>
+                  </div>
+                  <a
+                    href="https://www.fda.gov/food/food-safety-modernization-act-fsma/food-traceability-list"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 hover:underline shrink-0"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    <span>Danh sách FTL</span>
+                  </a>
                 </div>
 
                 <div className="flex items-center space-x-2">

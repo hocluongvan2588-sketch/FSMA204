@@ -57,7 +57,7 @@ export async function POST(req: Request) {
         // Calculate subscription dates
         const startDate = new Date()
         const trialEndDate = new Date()
-        trialEndDate.setDate(trialEndDate.getDate() + 14) // 14-day trial
+        trialEndDate.setDate(trialEndDate.getDate() + 30) // 30-day trial
 
         const endDate = new Date(trialEndDate)
         if (billingCycle === "monthly") {
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
           start_date: startDate.toISOString(),
           trial_end_date: trialEndDate.toISOString(),
           end_date: endDate.toISOString(),
-          price: price,
+          current_price: price,
           payment_method: "stripe",
           stripe_subscription_id: session.subscription as string,
           stripe_customer_id: session.customer as string,

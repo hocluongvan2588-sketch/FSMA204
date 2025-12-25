@@ -29,6 +29,13 @@ export interface SubscriptionQuotas {
   }
 }
 
+export interface SubscriptionLimits {
+  maxUsers: number
+  maxFacilities: number
+  maxProducts: number
+  maxStorageGB: number
+}
+
 /**
  * Get company's active subscription with quotas
  */
@@ -40,24 +47,27 @@ export async function getCompanySubscription(companyId: string): Promise<Subscri
     .select(`
       *,
       service_packages (
-        name,
+        package_name,
         max_users,
         max_facilities,
         max_products,
         max_storage_gb,
-        feature_fda,
-        feature_agent,
-        feature_cte,
-        feature_reporting,
-        feature_api,
-        feature_branding
+        includes_fda_management,
+        includes_agent_management,
+        includes_cte_tracking,
+        includes_reporting,
+        includes_api_access,
+        includes_custom_branding
       )
     `)
     .eq("company_id", companyId)
-    .eq("subscription_status", "active")
+    .in("subscription_status", ["active", "trial"])
+    .order("start_date", { ascending: false })
+    .limit(1)
     .single()
 
   if (error || !subscription || !subscription.service_packages) {
+    console.log("[v0] No active/trial subscription found for company:", companyId, error)
     return null
   }
 
@@ -73,14 +83,14 @@ export async function getCompanySubscription(companyId: string): Promise<Subscri
     currentProducts: subscription.current_products_count || 0,
     currentStorageGb: subscription.current_storage_gb || 0,
     subscriptionStatus: subscription.subscription_status,
-    packageName: pkg.name,
+    packageName: pkg.package_name,
     features: {
-      fda: pkg.feature_fda,
-      agent: pkg.feature_agent,
-      cte: pkg.feature_cte,
-      reporting: pkg.feature_reporting,
-      api: pkg.feature_api,
-      branding: pkg.feature_branding,
+      fda: pkg.includes_fda_management,
+      agent: pkg.includes_agent_management,
+      cte: pkg.includes_cte_tracking,
+      reporting: pkg.includes_reporting,
+      api: pkg.includes_api_access,
+      branding: pkg.includes_custom_branding,
     },
   }
 }
@@ -101,10 +111,10 @@ export async function checkUserQuota(companyId: string): Promise<QuotaCheck> {
     }
   }
 
-  // -1 means unlimited
   const unlimited = subscription.maxUsers === -1
   const allowed =
-    subscription.subscriptionStatus === "active" && (unlimited || subscription.currentUsers < subscription.maxUsers)
+    (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trial") &&
+    (unlimited || subscription.currentUsers < subscription.maxUsers)
 
   return {
     allowed,
@@ -133,7 +143,7 @@ export async function checkFacilityQuota(companyId: string): Promise<QuotaCheck>
 
   const unlimited = subscription.maxFacilities === -1
   const allowed =
-    subscription.subscriptionStatus === "active" &&
+    (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trial") &&
     (unlimited || subscription.currentFacilities < subscription.maxFacilities)
 
   return {
@@ -163,7 +173,7 @@ export async function checkProductQuota(companyId: string): Promise<QuotaCheck> 
 
   const unlimited = subscription.maxProducts === -1
   const allowed =
-    subscription.subscriptionStatus === "active" &&
+    (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trial") &&
     (unlimited || subscription.currentProducts < subscription.maxProducts)
 
   return {
@@ -184,7 +194,7 @@ export async function checkFeatureAccess(
 ): Promise<boolean> {
   const subscription = await getCompanySubscription(companyId)
 
-  if (!subscription || subscription.subscriptionStatus !== "active") {
+  if (!subscription || (subscription.subscriptionStatus !== "active" && subscription.subscriptionStatus !== "trial")) {
     return false
   }
 
@@ -196,7 +206,10 @@ export async function checkFeatureAccess(
  */
 export async function requireActiveSubscription(companyId: string): Promise<boolean> {
   const subscription = await getCompanySubscription(companyId)
-  return subscription !== null && subscription.subscriptionStatus === "active"
+  return (
+    subscription !== null &&
+    (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trial")
+  )
 }
 
 /**
@@ -238,4 +251,46 @@ export async function recalculateUsage(companyId: string): Promise<void> {
     facilities: actualFacilities,
     products: actualProducts,
   })
+}
+
+async function getSubscriptionLimits(companyId: string): Promise<SubscriptionLimits | null> {
+  const supabase = await createClient()
+
+  const { data: subscription, error } = await supabase
+    .from("company_subscriptions")
+    .select(`
+      *,
+      service_packages (
+        package_name,
+        max_users,
+        max_facilities,
+        max_products,
+        max_storage_gb,
+        includes_fda_management,
+        includes_agent_management,
+        includes_cte_tracking,
+        includes_reporting,
+        includes_api_access,
+        includes_custom_branding
+      )
+    `)
+    .eq("company_id", companyId)
+    .in("subscription_status", ["active", "trial"])
+    .order("start_date", { ascending: false })
+    .limit(1)
+    .single()
+
+  if (error || !subscription || !subscription.service_packages) {
+    console.log("[v0] No active/trial subscription found for company:", companyId, error)
+    return null
+  }
+
+  const pkg = subscription.service_packages as any
+
+  return {
+    maxUsers: pkg.max_users,
+    maxFacilities: pkg.max_facilities,
+    maxProducts: pkg.max_products,
+    maxStorageGB: pkg.max_storage_gb,
+  }
 }

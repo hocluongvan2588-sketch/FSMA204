@@ -61,7 +61,13 @@ function PrintLotsContent() {
         return await QRCode.toDataURL(tlc, { width: 200, margin: 1 })
       } else {
         const canvas = document.createElement("canvas")
-        JsBarcode(canvas, tlc, { format: "CODE128", displayValue: true, height: 50 })
+        JsBarcode(canvas, tlc, {
+          format: "CODE128",
+          displayValue: true,
+          height: 50,
+          width: 2,
+          margin: 5,
+        })
         return canvas.toDataURL()
       }
     } catch (error) {
@@ -120,6 +126,7 @@ function PrintLotsContent() {
               padding: 15px;
               margin-bottom: 20px;
               width: 400px;
+              overflow: hidden;
             }
             .label h2 {
               margin: 0 0 10px 0;
@@ -130,6 +137,8 @@ function PrintLotsContent() {
             .label img {
               display: block;
               margin: 15px auto;
+              max-width: 100%;
+              height: auto;
             }
             .label-info {
               font-size: 12px;
@@ -287,12 +296,16 @@ function PrintLotsContent() {
                   {lots
                     .filter((lot) => selectedLots.includes(lot.id))
                     .map((lot) => (
-                      <div key={lot.id} className="border-2 border-slate-900 p-4 rounded">
+                      <div key={lot.id} className="border-2 border-slate-900 p-4 rounded overflow-hidden">
                         <h3 className="font-semibold text-lg border-b pb-2 mb-3">
                           {lot.products?.product_name || "N/A"}
                         </h3>
                         {previews[lot.id] && (
-                          <img src={previews[lot.id] || "/placeholder.svg"} alt={lot.tlc} className="mx-auto my-3" />
+                          <img
+                            src={previews[lot.id] || "/placeholder.svg"}
+                            alt={lot.tlc}
+                            className="mx-auto my-3 max-w-full h-auto"
+                          />
                         )}
                         <div className="text-sm space-y-1">
                           <div>

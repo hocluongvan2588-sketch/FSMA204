@@ -38,6 +38,10 @@ export async function createSubscriptionCheckout(
     throw new Error("Package not found")
   }
 
+  if (pkg.package_code === "FREE") {
+    throw new Error("Free plan does not require payment")
+  }
+
   // Get or create Stripe customer for company
   let stripeCustomerId = company.stripe_customer_id
 
@@ -63,7 +67,6 @@ export async function createSubscriptionCheckout(
     throw new Error("Stripe price not configured for this package")
   }
 
-  // Create Stripe Checkout Session for subscription
   const session = await stripe.checkout.sessions.create({
     customer: stripeCustomerId,
     mode: "subscription",
@@ -75,7 +78,7 @@ export async function createSubscriptionCheckout(
       },
     ],
     subscription_data: {
-      trial_period_days: 14, // 14-day free trial
+      trial_period_days: 30, // 30-day free trial (changed from 14)
       metadata: {
         company_id: companyId,
         package_id: packageId,

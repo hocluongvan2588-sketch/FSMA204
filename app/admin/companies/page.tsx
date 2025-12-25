@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { useLanguage } from "@/contexts/language-context"
 import { Building2, Users } from "lucide-react"
 import { isSystemAdmin } from "@/lib/auth/roles"
+import { PlanBadge } from "@/components/plan-badge"
 
 interface Company {
   id: string
@@ -185,6 +186,7 @@ export default function AdminCompaniesPage() {
                   <TableHead>{t("company.fields.name")}</TableHead>
                   <TableHead>{t("company.fields.taxId")}</TableHead>
                   <TableHead>{t("company.fields.email")}</TableHead>
+                  <TableHead>Gói dịch vụ</TableHead>
                   <TableHead>{t("company.info.facilities")}</TableHead>
                   <TableHead>{t("admin.users.title")}</TableHead>
                   <TableHead>{t("common.fields.createdAt")}</TableHead>
@@ -202,6 +204,9 @@ export default function AdminCompaniesPage() {
                         <div>{company.email}</div>
                         <div className="text-muted-foreground">{company.phone}</div>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <PlanBadge companyId={company.id} variant="compact" />
                     </TableCell>
                     <TableCell>
                       <Badge className="bg-blue-100 text-blue-700">{company._count?.facilities || 0}</Badge>

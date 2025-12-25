@@ -42,7 +42,6 @@ export function getMenuItemsByRole(role: string) {
   ]
 
   const adminItems = [
-    { id: "company", label: "Công ty", href: "/dashboard/company", roles: ["admin"] },
     { id: "users", label: "Người dùng", href: "/admin/users", roles: ["admin", "system_admin"] },
     { id: "audit", label: "Kiểm toán", href: "/dashboard/audit-trail", roles: ["admin", "system_admin"] },
   ]

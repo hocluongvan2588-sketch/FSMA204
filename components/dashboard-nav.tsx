@@ -14,7 +14,6 @@ import {
   Home,
   Bell,
   Search,
-  Building2,
   Package,
   Tag,
   FileText,
@@ -24,6 +23,8 @@ import {
   Settings,
   Factory,
   ShieldCheck,
+  AlertTriangle,
+  FileCheck,
 } from "lucide-react"
 
 interface DashboardNavProps {
@@ -45,32 +46,75 @@ export function DashboardNav({ user, profile }: DashboardNavProps) {
   }
 
   const isAdminUser = profile?.role === "admin" || profile?.role === "system_admin"
+  const orgType = profile?.organization_type
+
+  const canAccessLots = (orgType: string | null) => {
+    // All organizations can create/manage TLCs
+    return true
+  }
+
+  const canAccessShipments = (orgType: string | null) => {
+    if (!orgType) return true
+    // Retailers don't ship products, they only receive
+    return orgType !== "retailer"
+  }
+
+  const canAccessCTE = (orgType: string | null) => {
+    // All organizations need to create CTEs
+    return true
+  }
+
+  const canAccessReconciliation = (orgType: string | null) => {
+    if (!orgType) return true
+    // Farms and port operators typically don't need reconciliation
+    return orgType !== "farm" && orgType !== "port"
+  }
+
+  const overviewNav = [{ name: "Tổng quan", href: "/dashboard", icon: Home, dataTour: undefined }]
 
   const productionNav = [
-    { name: "Tổng quan", href: "/dashboard", icon: Home, dataTour: undefined },
-    { name: "Mã TLC", href: "/dashboard/lots", icon: Tag, dataTour: "tlc-codes" },
-    { name: "Lô hàng", href: "/dashboard/shipments", icon: Truck, dataTour: "shipments" },
+    ...(canAccessLots(orgType) ? [{ name: "Mã TLC", href: "/dashboard/lots", icon: Tag, dataTour: "tlc-codes" }] : []),
+    ...(canAccessShipments(orgType)
+      ? [{ name: "Lô hàng", href: "/dashboard/shipments", icon: Truck, dataTour: "shipments" }]
+      : []),
   ]
 
   const operationsNav = [
     { name: "Đội ngũ Operator", href: "/dashboard/operator", icon: Users2, dataTour: undefined },
     { name: "Kho tại chỗ", href: "/dashboard/facilities", icon: Factory, dataTour: "facilities" },
-    { name: "Sự kiện CTE", href: "/dashboard/cte", icon: FileText, dataTour: "cte-events" },
+    { name: "Sản phẩm", href: "/dashboard/products", icon: Package, dataTour: "products" },
+    ...(canAccessCTE(orgType)
+      ? [{ name: "Sự kiện CTE", href: "/dashboard/cte", icon: FileText, dataTour: "cte-events" }]
+      : []),
     { name: "Báo cáo FSMA 204", href: "/dashboard/reports", icon: BarChart3, dataTour: "reports" },
   ]
 
   const systemNav = [
-    { name: "Cảnh báo", href: "/dashboard/notifications", icon: Bell, dataTour: "notifications" },
+    { name: "Cảnh báo", href: "/dashboard/alerts", icon: AlertTriangle, dataTour: "alerts" },
+    { name: "Thông báo", href: "/dashboard/notifications", icon: Bell, dataTour: "notifications" },
     { name: "Cài đặt thiết bị", href: "/dashboard/settings", icon: Settings, dataTour: undefined },
     { name: "Truy xuất nguồn gốc", href: "/dashboard/traceability", icon: Search, dataTour: "traceability" },
-  ]
-
-  const managementNav = [
-    { name: "Công ty", href: "/dashboard/company", icon: Building2, dataTour: "company-info" },
-    { name: "Sản phẩm", href: "/dashboard/products", icon: Package, dataTour: "products" },
+    ...(canAccessReconciliation(orgType)
+      ? [{ name: "Đối soát hàng loạt", href: "/dashboard/reconciliation", icon: FileCheck, dataTour: "reconciliation" }]
+      : []),
   ]
 
   const adminNav = [{ name: "Quản trị viên", href: "/admin", icon: ShieldCheck }]
+
+  const getOrgTypeBadge = (orgType: string | null) => {
+    const orgTypeMap: Record<string, { label: string; color: string }> = {
+      farm: { label: "Farm", color: "bg-green-100 text-green-700 border-green-300" },
+      packing_house: { label: "Packer", color: "bg-blue-100 text-blue-700 border-blue-300" },
+      processor: { label: "Processor", color: "bg-purple-100 text-purple-700 border-purple-300" },
+      distributor: { label: "Distributor", color: "bg-orange-100 text-orange-700 border-orange-300" },
+      retailer: { label: "Retailer", color: "bg-pink-100 text-pink-700 border-pink-300" },
+      importer: { label: "Importer", color: "bg-cyan-100 text-cyan-700 border-cyan-300" },
+      port: { label: "Port", color: "bg-slate-100 text-slate-700 border-slate-300" },
+    }
+    return orgType ? orgTypeMap[orgType] : null
+  }
+
+  const orgBadge = getOrgTypeBadge(orgType)
 
   const renderNavSection = (title: string, items: typeof productionNav) => (
     <div className="mb-6">
@@ -149,12 +193,10 @@ export function DashboardNav({ user, profile }: DashboardNavProps) {
       </div>
 
       <nav className="flex-1 overflow-y-auto p-4">
+        {renderNavSection("", overviewNav)}
         {renderNavSection("SẢN XUẤT", productionNav)}
         {renderNavSection("VẬN HÀNH", operationsNav)}
         {renderNavSection("HỆ THỐNG", systemNav)}
-
-        {!collapsed && <div className="my-4 border-t" />}
-        {renderNavSection("QUẢN LÝ", managementNav)}
 
         {isAdminUser && (
           <>
@@ -192,9 +234,14 @@ export function DashboardNav({ user, profile }: DashboardNavProps) {
                     </Badge>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground capitalize">
+                <p className="text-xs text-muted-foreground capitalize mb-2">
                   {profile?.role === "system_admin" ? "System Admin" : profile?.role || "viewer"}
                 </p>
+                {orgBadge && (
+                  <Badge variant="outline" className={`text-xs ${orgBadge.color} border`}>
+                    {orgBadge.label}
+                  </Badge>
+                )}
               </>
             ) : (
               <div className="h-8 w-8 rounded-full bg-emerald-600 flex items-center justify-center text-white font-semibold text-sm">

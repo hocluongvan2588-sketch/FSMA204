@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Users, Shield, Activity, RefreshCw } from "lucide-react"
+import { Users, Shield, Activity, RefreshCw, Building2, Package } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useLanguage } from "@/contexts/language-context"
 
@@ -15,6 +15,8 @@ interface AdminStats {
   totalProducts: number
   totalSystemLogs: number
   adminCount: number
+  totalCompanies?: number
+  totalPackages?: number
 }
 
 interface UserProfile {
@@ -46,42 +48,79 @@ export default function AdminDashboard() {
 
   const loadData = async () => {
     setIsLoading(true)
-    const supabase = createClient()
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    try {
+      const supabase = createClient()
 
-    if (!user) {
-      router.push("/auth/login")
-      return
-    }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("role, company_id, companies(name)")
-      .eq("id", user.id)
-      .single()
-
-    if (profileData) {
-      setProfile(profileData as ProfileData)
-
-      const isSystemAdminUser = profileData.role === "system_admin"
-
-      const response = await fetch("/api/admin/stats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-
-      if (response.ok) {
-        const statsData = await response.json()
-        setStats(statsData.stats)
-        setRecentUsers(statsData.recentUsers || [])
+      if (!user) {
+        router.push("/auth/login")
+        return
       }
-    }
 
-    setIsLoading(false)
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("role, company_id, companies(name)")
+        .eq("id", user.id)
+        .single()
+
+      if (profileError) {
+        console.error("[v0] Profile fetch error:", profileError)
+        setIsLoading(false)
+        return
+      }
+
+      if (profileData) {
+        setProfile(profileData as ProfileData)
+
+        const isSystemAdminUser = profileData.role === "system_admin"
+
+        if (isSystemAdminUser) {
+          const [{ count: totalUsers }, { count: totalCompanies }, { count: totalPackages }, { data: allUsers }] =
+            await Promise.all([
+              supabase.from("profiles").select("*", { count: "exact", head: true }),
+              supabase.from("companies").select("*", { count: "exact", head: true }),
+              supabase.from("service_packages").select("*", { count: "exact", head: true }),
+              supabase
+                .from("profiles")
+                .select("id, full_name, role, created_at")
+                .order("created_at", { ascending: false })
+                .limit(5),
+            ])
+
+          setStats({
+            totalUsers: totalUsers || 0,
+            adminCount: 0,
+            totalSystemLogs: 0,
+            totalFacilities: 0,
+            totalProducts: 0,
+            totalCompanies: totalCompanies || 0,
+            totalPackages: totalPackages || 0,
+          })
+          setRecentUsers(allUsers || [])
+        } else {
+          // For company admins, use existing API
+          const response = await fetch("/api/admin/stats", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          })
+
+          if (response.ok) {
+            const statsData = await response.json()
+            setStats(statsData.stats)
+            setRecentUsers(statsData.recentUsers || [])
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[v0] Load data error:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const getRoleBadge = (role: string) => {
@@ -108,36 +147,27 @@ export default function AdminDashboard() {
     )
   }
 
+  const isSystemAdmin = profile?.role === "system_admin"
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold">{t("admin.overview.title")}</h1>
-            {profile?.role === "system_admin" ? (
+            {isSystemAdmin ? (
               <Badge className="bg-purple-600 text-white">{t("admin.overview.systemBadge")}</Badge>
             ) : (
               <Badge className="bg-red-600 text-white">{t("admin.overview.companyBadge")}</Badge>
             )}
           </div>
-          <p className="text-muted-foreground">{t("admin.overview.description")}</p>
-          {profile?.companies && (
+          <p className="text-muted-foreground">
+            {isSystemAdmin ? "Quản lý toàn bộ hệ thống FSMA 204" : t("admin.overview.description")}
+          </p>
+          {profile?.companies && !isSystemAdmin && (
             <div className="flex items-center gap-2 text-sm mt-2">
               <Users className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">{(profile.companies as any).name}</span>
-            </div>
-          )}
-          {!profile?.company_id && profile?.role === "admin" && (
-            <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-              {t("admin.companies.noCompanyAssigned")}
             </div>
           )}
         </div>
@@ -147,7 +177,7 @@ export default function AdminDashboard() {
         </Button>
       </div>
 
-      {profile?.role === "system_admin" && (
+      {isSystemAdmin && (
         <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-3 rounded-lg flex items-start gap-3">
           <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -158,61 +188,112 @@ export default function AdminDashboard() {
             />
           </svg>
           <div>
-            <p className="font-semibold">{t("admin.common.systemAdminMode")}</p>
-            <p className="text-sm">{t("admin.common.systemAdminDesc")}</p>
+            <p className="font-semibold">System Admin Mode</p>
+            <p className="text-sm">
+              Bạn có quyền quản lý toàn bộ hệ thống. Để xem data nghiệp vụ của companies, vui lòng đăng nhập với tài
+              khoản Company Admin.
+            </p>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">{t("admin.overview.stats.totalUsers")}</CardTitle>
-            <Users className="h-5 w-5 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{stats?.totalUsers || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">{t("admin.overview.stats.accountsInSystem")}</p>
-            <Button variant="link" className="px-0 mt-2" onClick={() => router.push("/admin/users")}>
-              {t("common.actions.viewDetails")} →
-            </Button>
-          </CardContent>
-        </Card>
+        {isSystemAdmin ? (
+          <>
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => router.push("/admin/users")}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+                <Users className="h-5 w-5 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{stats?.totalUsers || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">Tất cả users trong hệ thống</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">{t("admin.overview.stats.administrators")}</CardTitle>
-            <Shield className="h-5 w-5 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{stats?.adminCount || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {profile?.role === "system_admin"
-                ? t("admin.overview.stats.systemAdminCount", { count: 1 })
-                : t("admin.overview.stats.systemAdminCount", { count: 0 })}
-            </p>
-          </CardContent>
-        </Card>
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => router.push("/admin/companies")}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Companies</CardTitle>
+                <Building2 className="h-5 w-5 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{stats?.totalCompanies || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">Công ty đang hoạt động</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">{t("admin.systemLogs.title")}</CardTitle>
-            <Activity className="h-5 w-5 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{stats?.totalSystemLogs || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">{t("admin.systemLogs.recordedEvents")}</p>
-            <Button variant="link" className="px-0 mt-2" onClick={() => router.push("/admin/system-logs")}>
-              {t("common.actions.viewDetails")} →
-            </Button>
-          </CardContent>
-        </Card>
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => router.push("/admin/service-packages")}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Service Packages</CardTitle>
+                <Package className="h-5 w-5 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{stats?.totalPackages || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">Gói dịch vụ có sẵn</p>
+              </CardContent>
+            </Card>
+          </>
+        ) : (
+          <>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">{t("admin.overview.stats.totalUsers")}</CardTitle>
+                <Users className="h-5 w-5 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{stats?.totalUsers || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">{t("admin.overview.stats.accountsInSystem")}</p>
+                <Button variant="link" className="px-0 mt-2" onClick={() => router.push("/admin/users")}>
+                  {t("common.actions.viewDetails")} →
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">{t("admin.overview.stats.administrators")}</CardTitle>
+                <Shield className="h-5 w-5 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{stats?.adminCount || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t("admin.overview.stats.systemAdminCount", { count: 0 })}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">{t("admin.systemLogs.title")}</CardTitle>
+                <Activity className="h-5 w-5 text-orange-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{stats?.totalSystemLogs || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">{t("admin.systemLogs.recordedEvents")}</p>
+                <Button variant="link" className="px-0 mt-2" onClick={() => router.push("/admin/system-logs")}>
+                  {t("common.actions.viewDetails")} →
+                </Button>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("admin.overview.recentUsers.title")}</CardTitle>
-          <CardDescription>{t("admin.overview.recentUsers.description")}</CardDescription>
+          <CardTitle>{isSystemAdmin ? "Recent Users" : t("admin.overview.recentUsers.title")}</CardTitle>
+          <CardDescription>
+            {isSystemAdmin ? "Users mới đăng ký gần đây" : t("admin.overview.recentUsers.description")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {recentUsers.length === 0 ? (

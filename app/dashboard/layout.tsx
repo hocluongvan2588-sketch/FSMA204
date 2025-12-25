@@ -8,6 +8,7 @@ import { NotificationBell } from "@/components/notification-bell"
 import { UserProfileMenu } from "@/components/user-profile-menu"
 import { GlobalSearch } from "@/components/global-search"
 import { Suspense } from "react"
+import { PlanBadge } from "@/components/plan-badge" // Import PlanBadge component
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -39,7 +40,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   if (profile.role === "system_admin") {
-    redirect("/admin")
+    redirect("/admin") // Redirect system_admin to /admin instead of /system-admin
   }
 
   return (
@@ -52,6 +53,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
               <Suspense fallback={<div>Loading...</div>}>
                 <GlobalSearch />
                 <div className="flex items-center gap-3">
+                  {profile?.company_id && (
+                    <div className="hidden sm:block">
+                      <PlanBadge companyId={profile.company_id} variant="compact" />
+                    </div>
+                  )}
                   <NotificationBell />
                   <UserProfileMenu user={user} profile={profile} />
                 </div>

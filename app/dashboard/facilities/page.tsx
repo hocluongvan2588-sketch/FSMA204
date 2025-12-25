@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { FacilitiesSearchFilter } from "@/components/facilities-search-filter"
+import { Plus } from "lucide-react"
 
 export default async function FacilitiesPage({
   searchParams,
@@ -13,7 +14,19 @@ export default async function FacilitiesPage({
   const supabase = await createClient()
   const { search, facility_type, status } = searchParams
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("role, company_id").eq("id", user.id).single()
+    : { data: null }
+
   let query = supabase.from("facilities").select("*, companies(name)")
+
+  if (profile && profile.company_id) {
+    query = query.eq("company_id", profile.company_id)
+  }
 
   if (search) {
     query = query.or(`name.ilike.%${search}%,location_code.ilike.%${search}%,address.ilike.%${search}%`)
@@ -29,16 +42,31 @@ export default async function FacilitiesPage({
 
   const { data: facilities } = await query.order("created_at", { ascending: false })
 
+  const canCreate = profile?.role === "system_admin" || profile?.role === "admin"
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Quản lý cơ sở</h1>
-          <p className="text-slate-500 mt-1">Danh sách các cơ sở sản xuất và chế biến</p>
+          <p className="text-slate-500 mt-1">Xem và yêu cầu cập nhật thông tin cơ sở của công ty</p>
         </div>
-        <Button asChild>
-          <Link href="/dashboard/facilities/create">Thêm cơ sở</Link>
-        </Button>
+        {canCreate && (
+          <Button asChild className="bg-teal-600 hover:bg-teal-700">
+            <Link href="/dashboard/facilities/create">
+              <Plus className="h-4 w-4 mr-2" />
+              Tạo cơ sở mới
+            </Link>
+          </Button>
+        )}
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg">
+        <p className="font-semibold">💡 Lưu ý về cơ sở và sự kiện CTE</p>
+        <p className="text-sm">
+          Mỗi cơ sở được liên kết với các sự kiện CTE (Critical Tracking Events) theo quy định FSMA 204. Sau khi tạo cơ
+          sở, bạn có thể tạo các sự kiện CTE như harvest, cooling, packing, v.v. từ chi tiết cơ sở.
+        </p>
       </div>
 
       <FacilitiesSearchFilter />
@@ -61,11 +89,18 @@ export default async function FacilitiesPage({
             <p className="text-slate-500 mb-6">
               {search || facility_type || status
                 ? "Thử thay đổi bộ lọc của bạn"
-                : "Hãy tạo cơ sở đầu tiên để bắt đầu theo dõi sản xuất"}
+                : canCreate
+                  ? "Hãy tạo cơ sở đầu tiên để bắt đầu theo dõi sản xuất và tạo sự kiện CTE"
+                  : "Liên hệ Admin để thêm cơ sở mới"}
             </p>
-            <Button asChild>
-              <Link href="/dashboard/facilities/create">Tạo cơ sở mới</Link>
-            </Button>
+            {canCreate && (
+              <Button asChild className="bg-teal-600 hover:bg-teal-700">
+                <Link href="/dashboard/facilities/create">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Tạo cơ sở đầu tiên
+                </Link>
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -106,7 +141,7 @@ export default async function FacilitiesPage({
                   <p className="text-sm text-slate-700 line-clamp-2">{facility.address}</p>
                 </div>
                 <Button asChild variant="outline" size="sm" className="w-full mt-2 bg-transparent">
-                  <Link href={`/dashboard/facilities/${facility.id}`}>Xem chi tiết</Link>
+                  <Link href={`/dashboard/facilities/${facility.id}`}>Xem chi tiết & Tạo CTE</Link>
                 </Button>
               </CardContent>
             </Card>

@@ -4,9 +4,13 @@ export interface StripeProduct {
   stripePriceIdYearly: string
 }
 
-// This maps service package codes to Stripe Price IDs
 // You need to create these products and prices in your Stripe dashboard first
 export const STRIPE_PRODUCTS: Record<string, StripeProduct> = {
+  FREE: {
+    packageCode: "FREE",
+    stripePriceIdMonthly: "price_free", // Not used, but kept for consistency
+    stripePriceIdYearly: "price_free",
+  },
   STARTER: {
     packageCode: "STARTER",
     stripePriceIdMonthly: "price_starter_monthly", // Replace with actual Stripe Price ID
@@ -17,9 +21,14 @@ export const STRIPE_PRODUCTS: Record<string, StripeProduct> = {
     stripePriceIdMonthly: "price_professional_monthly",
     stripePriceIdYearly: "price_professional_yearly",
   },
+  BUSINESS: {
+    packageCode: "BUSINESS",
+    stripePriceIdMonthly: "price_business_monthly",
+    stripePriceIdYearly: "price_business_yearly",
+  },
   ENTERPRISE: {
     packageCode: "ENTERPRISE",
-    stripePriceIdMonthly: "price_enterprise_monthly",
+    stripePriceIdMonthly: "price_enterprise_monthly", // Contact sales, but kept for custom pricing
     stripePriceIdYearly: "price_enterprise_yearly",
   },
 }

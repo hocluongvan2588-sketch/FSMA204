@@ -135,6 +135,26 @@ export default function ScanPage() {
       return
     }
 
+    if (data.status === "quarantined") {
+      setError(`⛔ Lô hàng ${tlcCode} đang bị CÁCH LY. Không được phép quét để xử lý tiếp.`)
+      setResult(null)
+      return
+    }
+
+    if (data.status === "recalled") {
+      setError(`🚫 Lô hàng ${tlcCode} đã bị THU HỒI. Không được phép quét để xử lý tiếp.`)
+      setResult(null)
+      return
+    }
+
+    const { data: lastCTE } = await supabase
+      .from("critical_tracking_events")
+      .select("event_type, event_date, facilities(name)")
+      .eq("tlc_id", data.id)
+      .order("event_date", { ascending: false })
+      .limit(1)
+      .single()
+
     const scanResult: ScanResult = {
       tlc: tlcCode,
       timestamp: new Date(),
@@ -144,10 +164,9 @@ export default function ScanPage() {
     setResult(scanResult)
     setManualInput("")
 
-    // Save to history
-    const updatedHistory = [scanResult, ...history.slice(0, 9)]
-    setHistory(updatedHistory)
-    localStorage.setItem("scan_history", JSON.stringify(updatedHistory))
+    if (lastCTE) {
+      console.log("[v0] Last CTE:", lastCTE)
+    }
   }
 
   const handleManualScan = () => {

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { TraceabilityTimeline } from "@/components/traceability-timeline"
+import { TraceabilityAdvanced } from "@/components/traceability-advanced"
 
 export default async function TraceabilityDetailPage({ params }: { params: { tlc: string } }) {
   const supabase = await createClient()
@@ -60,6 +61,24 @@ export default async function TraceabilityDetailPage({ params }: { params: { tlc
       data: shipment,
     })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime())
+
+  const [forwardTraceResponse, backwardTraceResponse] = await Promise.all([
+    fetch(
+      `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/api/trace/forward/${encodeURIComponent(tlc)}`,
+      {
+        cache: "no-store",
+      },
+    ).catch(() => ({ ok: false, json: async () => ({ success: false, data: null }) })),
+    fetch(
+      `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/api/trace/backward/${encodeURIComponent(tlc)}`,
+      {
+        cache: "no-store",
+      },
+    ).catch(() => ({ ok: false, json: async () => ({ success: false, data: null }) })),
+  ])
+
+  const forwardTrace = forwardTraceResponse.ok ? await forwardTraceResponse.json() : { success: false, data: null }
+  const backwardTrace = backwardTraceResponse.ok ? await backwardTraceResponse.json() : { success: false, data: null }
 
   return (
     <div className="space-y-6">
@@ -336,6 +355,16 @@ export default async function TraceabilityDetailPage({ params }: { params: { tlc
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Truy xuất nguồn gốc nâng cao</CardTitle>
+          <p className="text-sm text-slate-500">Theo dõi chuỗi cung ứng theo cả hai hướng</p>
+        </CardHeader>
+        <CardContent>
+          <TraceabilityAdvanced tlc={lot.tlc} forwardData={forwardTrace.data} backwardData={backwardTrace.data} />
+        </CardContent>
+      </Card>
     </div>
   )
 }

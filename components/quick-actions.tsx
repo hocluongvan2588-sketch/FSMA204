@@ -21,7 +21,7 @@ export function QuickActions() {
       href: "/dashboard/lots/print",
       gradient: "from-blue-500 to-blue-600",
       shadow: "shadow-blue-500/20",
-      dataTour: "print-labels", // Added data-tour for product tour
+      dataTour: "print-labels",
     },
     {
       icon: ScanLine,
@@ -29,7 +29,7 @@ export function QuickActions() {
       href: "/dashboard/scan",
       gradient: "from-purple-500 to-purple-600",
       shadow: "shadow-purple-500/20",
-      dataTour: "scan-qr", // Added data-tour for product tour
+      dataTour: "scan-qr",
     },
     {
       icon: CheckCircle2,
@@ -37,7 +37,7 @@ export function QuickActions() {
       href: "/dashboard/cte/approve",
       gradient: "from-amber-500 to-amber-600",
       shadow: "shadow-amber-500/20",
-      dataTour: "cte-approve", // Added data-tour for product tour
+      dataTour: "cte-approve",
     },
   ]
 
@@ -50,7 +50,7 @@ export function QuickActions() {
             key={action.label}
             asChild
             variant="outline"
-            data-tour={action.dataTour} // Applied data-tour attribute
+            data-tour={action.dataTour}
             className={cn(
               "h-auto flex-col items-center gap-3 p-6 rounded-3xl border-2 hover:border-transparent transition-all duration-300",
               "bg-gradient-to-br",
@@ -61,7 +61,7 @@ export function QuickActions() {
             )}
           >
             <Link href={action.href}>
-              <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
+              <div className="shrink-0 p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
                 <Icon className="h-6 w-6" />
               </div>
               <span className="text-sm font-semibold text-center">{action.label}</span>

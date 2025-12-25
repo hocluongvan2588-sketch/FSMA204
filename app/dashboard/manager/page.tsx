@@ -72,7 +72,11 @@ export default async function ManagerDashboard() {
       `),
     supabase
       .from("fda_registrations")
-      .select("*, facilities(name)")
+      .select(`
+        *,
+        facilities(name, location_code),
+        us_agents:us_agent_id(agent_name, email)
+      `)
       .order("renewal_date", { ascending: true })
       .limit(5),
     supabase.rpc("calculate_kde_compliance"),
@@ -119,7 +123,11 @@ export default async function ManagerDashboard() {
     registration_date: reg.registration_date,
     renewal_date: reg.renewal_date,
     expiry_date: reg.expiry_date,
-    fda_registration_number: reg.fda_registration_number,
+    fda_registration_number: reg.fda_registration_number || reg.fei_number,
+    agent_name: reg.us_agents?.agent_name || "Unknown Agent",
+    agent_registration_date: reg.agent_registration_date,
+    agent_expiry_date: reg.agent_expiry_date,
+    agent_registration_years: reg.agent_registration_years,
   }))
 
   const kpiData = [
@@ -180,13 +188,13 @@ export default async function ManagerDashboard() {
               className={`rounded-3xl shadow-lg shadow-slate-900/5 border-0 overflow-hidden hover:shadow-xl transition-all duration-300 hover:scale-105 bg-gradient-to-br ${kpi.bgGradient} dark:from-slate-800 dark:to-slate-900`}
             >
               <CardContent className="p-6 h-full">
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`p-3 rounded-2xl bg-gradient-to-br ${kpi.gradient} shadow-lg`}>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`shrink-0 p-3 rounded-2xl bg-gradient-to-br ${kpi.gradient} shadow-lg`}>
                     <Icon className="h-6 w-6 text-white" />
                   </div>
                   <Badge
                     variant="secondary"
-                    className={`${kpi.changeType === "increase" ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800" : "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:border-red-800"} font-semibold border`}
+                    className={`${kpi.changeType === "increase" ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800" : "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:border-red-800"} font-semibold border shrink-0`}
                   >
                     {kpi.changeType === "increase" ? (
                       <TrendingUp className="h-3 w-3 mr-1" />

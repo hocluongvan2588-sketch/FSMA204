@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { parseCSV } from "@/lib/utils/csv-parser"
+import { checkStorageQuota, recordFileUpload } from "@/lib/storage-quota-client"
+import { createClient } from "@/lib/supabase/client"
 
 interface BulkUploadProps<T> {
   title: string
@@ -37,17 +39,57 @@ export function BulkUpload<T>({
   const [errors, setErrors] = useState<Array<{ row: number; field: string; message: string }>>([])
   const [uploadComplete, setUploadComplete] = useState(false)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
-    if (selectedFile) {
-      if (selectedFile.size > maxFileSize * 1024 * 1024) {
-        alert(`File size must be less than ${maxFileSize}MB`)
+    if (!selectedFile) return
+
+    // Check file size limit
+    if (selectedFile.size > maxFileSize * 1024 * 1024) {
+      alert(`File size must be less than ${maxFileSize}MB`)
+      return
+    }
+
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        alert("You must be logged in to upload files")
         return
       }
+
+      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+
+      if (!profile?.company_id) {
+        alert("No company found for your account")
+        return
+      }
+
+      const quota = await checkStorageQuota(profile.company_id, selectedFile.size)
+
+      if (!quota.allowed) {
+        alert(
+          `Storage quota exceeded! You have ${quota.remaining_gb.toFixed(2)} GB remaining, but this file requires ${(selectedFile.size / (1024 * 1024 * 1024)).toFixed(2)} GB. Please upgrade your plan or delete old files.`,
+        )
+        return
+      }
+
+      if (quota.warning_threshold) {
+        const proceed = confirm(
+          `Warning: You've used ${quota.usage_percentage.toFixed(1)}% of your storage quota. Continue with upload?`,
+        )
+        if (!proceed) return
+      }
+
       setFile(selectedFile)
       setErrors([])
       setValidData([])
       setUploadComplete(false)
+    } catch (error) {
+      console.error("[v0] Error checking storage quota:", error)
+      alert("Error checking storage quota. Please try again.")
     }
   }
 
@@ -58,15 +100,12 @@ export function BulkUpload<T>({
     setProgress(10)
 
     try {
-      // Read file
       const text = await file.text()
       setProgress(30)
 
-      // Parse CSV
       const parsedData = parseCSV(text)
       setProgress(50)
 
-      // Validate
       const result = await onValidate(parsedData)
       setProgress(70)
 
@@ -82,11 +121,32 @@ export function BulkUpload<T>({
   }
 
   const handleUpload = async () => {
-    if (validData.length === 0) return
+    if (validData.length === 0 || !file) return
 
     setIsProcessing(true)
     try {
+      // Upload data first
       await onUpload(validData)
+
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user) {
+        const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+
+        if (profile?.company_id) {
+          await recordFileUpload({
+            company_id: profile.company_id,
+            file_type: "csv",
+            file_name: file.name,
+            file_size_bytes: file.size,
+            uploaded_by: user.id,
+          })
+        }
+      }
+
       setUploadComplete(true)
       setFile(null)
       setValidData([])
@@ -119,7 +179,6 @@ export function BulkUpload<T>({
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Template Download */}
         <div className="flex items-center justify-between rounded-lg border p-4">
           <div>
             <p className="font-medium">Download CSV Template</p>
@@ -130,7 +189,6 @@ export function BulkUpload<T>({
           </Button>
         </div>
 
-        {/* File Upload */}
         <div className="space-y-2">
           <label htmlFor="file-upload" className="block text-sm font-medium">
             Upload CSV File
@@ -151,7 +209,6 @@ export function BulkUpload<T>({
           <p className="text-xs text-muted-foreground">Maximum file size: {maxFileSize}MB</p>
         </div>
 
-        {/* Progress */}
         {isProcessing && (
           <div className="space-y-2">
             <Progress value={progress} />
@@ -159,7 +216,6 @@ export function BulkUpload<T>({
           </div>
         )}
 
-        {/* Results */}
         {!isProcessing && validData.length > 0 && (
           <Alert>
             <CheckCircle2 className="h-4 w-4" />
@@ -176,7 +232,6 @@ export function BulkUpload<T>({
           </Alert>
         )}
 
-        {/* Errors */}
         {errors.length > 0 && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
@@ -196,7 +251,6 @@ export function BulkUpload<T>({
           </Alert>
         )}
 
-        {/* Success */}
         {uploadComplete && (
           <Alert>
             <CheckCircle2 className="h-4 w-4" />

@@ -24,6 +24,13 @@ export default async function CTEDetailPage({ params }: { params: { id: string }
   // Get KDEs for this CTE
   const { data: kdes } = await supabase.from("key_data_elements").select("*").eq("cte_id", id).order("created_at")
 
+  // Get audit history for this CTE
+  const { data: auditHistory } = await supabase.rpc("get_record_audit_history", {
+    p_table_name: "critical_tracking_events",
+    p_record_id: id,
+    p_limit: 20,
+  })
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -137,6 +144,39 @@ export default async function CTEDetailPage({ params }: { params: { id: string }
                   <p className="font-medium text-slate-900">
                     {kde.key_value} {kde.unit}
                   </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lịch sử thay đổi</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!auditHistory || auditHistory.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-slate-500">Chưa có lịch sử thay đổi cho sự kiện này</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {auditHistory.map((audit: any) => (
+                <div key={audit.id} className="border-l-2 border-blue-500 pl-4 py-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant={audit.operation === "INSERT" ? "default" : "secondary"}>{audit.operation}</Badge>
+                    <span className="text-sm text-slate-600">{audit.user_email}</span>
+                  </div>
+                  {audit.changed_fields && audit.changed_fields.length > 0 && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Thay đổi: <span className="font-mono">{audit.changed_fields.join(", ")}</span>
+                    </p>
+                  )}
+                  {audit.compliance_reason && (
+                    <p className="text-xs text-slate-600 mt-1 italic">Lý do: {audit.compliance_reason}</p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1">{new Date(audit.created_at).toLocaleString("vi-VN")}</p>
                 </div>
               ))}
             </div>

@@ -14,6 +14,7 @@ interface CreateUserInput {
   companyId?: string
   companyName?: string // Added companyName for system admin to set display name
   phone?: string
+  organizationType?: string // Added organization type for FSMA 204 compliance
 }
 
 export async function createUser(input: CreateUserInput) {
@@ -145,6 +146,7 @@ export async function createUser(input: CreateUserInput) {
         full_name: input.fullName,
         role: input.role,
         phone: input.phone || null,
+        organization_type: input.organizationType || null, // Set organization type for CTE permissions
       })
       .eq("id", authData.user.id)
 
@@ -194,7 +196,7 @@ export async function createCompany(input: {
 
     const { data: currentProfile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
 
-    if (!currentProfile || (currentProfile.role !== "admin" && currentProfile.role !== "system_admin")) {
+    if (!currentProfile || currentProfile.role !== "system_admin") {
       return { error: "Bạn không có quyền tạo công ty" }
     }
 
@@ -218,6 +220,64 @@ export async function createCompany(input: {
     }
 
     console.log("[v0] Company created:", data.id)
+
+    console.log("[v0] Attempting to create FREE subscription for new company")
+    const { data: freePackage, error: packageError } = await supabase
+      .from("service_packages")
+      .select("id, package_code, package_name, monthly_price_usd")
+      .eq("package_code", "FREE")
+      .eq("is_active", true)
+      .single()
+
+    if (packageError || !freePackage) {
+      console.error("[v0] FREE package not found:", packageError)
+      console.error("[v0] WARNING: Company created but no FREE subscription assigned!")
+      console.error("[v0] Please run: scripts/001-seed-service-packages.sql")
+      return {
+        success: true,
+        company: data,
+        warning: "Company created but FREE plan could not be assigned. Please contact system administrator.",
+      }
+    } else {
+      console.log("[v0] FREE package found:", freePackage)
+
+      const startDate = new Date()
+      const endDate = new Date()
+      endDate.setFullYear(endDate.getFullYear() + 100) // Free plan never expires
+
+      const { data: newSubscription, error: subError } = await supabase
+        .from("company_subscriptions")
+        .insert({
+          company_id: data.id,
+          package_id: freePackage.id,
+          subscription_status: "active", // Critical: Set to 'active', not 'trial'
+          billing_cycle: "monthly",
+          start_date: startDate.toISOString().split("T")[0], // DATE format
+          end_date: endDate.toISOString().split("T")[0], // DATE format
+          current_price: freePackage.monthly_price_usd || 0, // Required field
+          currency: "USD",
+          payment_method: "free",
+          payment_provider: "free", // Added for clarity
+          current_users_count: 0,
+          current_facilities_count: 0,
+          current_products_count: 0,
+          current_storage_gb: 0,
+        })
+        .select()
+        .single()
+
+      if (subError) {
+        console.error("[v0] Failed to create default FREE subscription:", subError)
+        return {
+          success: true,
+          company: data,
+          warning: `Company created but subscription failed: ${subError.message}`,
+        }
+      } else {
+        console.log("[v0] FREE subscription created successfully:", newSubscription)
+      }
+    }
+
     revalidatePath("/admin/companies")
     revalidatePath("/admin/users")
     return { success: true, company: data }

@@ -33,6 +33,7 @@ interface Profile {
   email?: string
   phone: string | null
   created_at: string
+  organization_type: string | null
 }
 
 export default function AdminUsersPage() {
@@ -57,6 +58,7 @@ export default function AdminUsersPage() {
   const [role, setRole] = useState("viewer")
   const [companyId, setCompanyId] = useState("")
   const [phone, setPhone] = useState("")
+  const [organizationType, setOrganizationType] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [showSystemAdminConfirm, setShowSystemAdminConfirm] = useState(false)
@@ -98,7 +100,7 @@ export default function AdminUsersPage() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     if (role === UserRole.SYSTEM_ADMIN) {
-      setPendingFormData({ email, password, fullName, role, companyId, phone })
+      setPendingFormData({ email, password, fullName, role, companyId, phone, organizationType })
       setShowSystemAdminConfirm(true)
       return
     }
@@ -119,6 +121,7 @@ export default function AdminUsersPage() {
         role,
         companyId: companyId === "none" ? undefined : companyId,
         phone,
+        organizationType: organizationType || undefined,
       })
 
       if (result.error) {
@@ -152,6 +155,7 @@ export default function AdminUsersPage() {
       setRole("viewer")
       setCompanyId("")
       setPhone("")
+      setOrganizationType("")
       setShowCreateForm(false)
 
       loadData()
@@ -275,6 +279,21 @@ export default function AdminUsersPage() {
     return colors[role] || colors.viewer
   }
 
+  const getOrganizationBadge = (orgType: string | null) => {
+    if (!orgType) return { label: "-", className: "bg-gray-100 text-gray-600" }
+
+    const config: Record<string, { label: string; className: string }> = {
+      farm: { label: "Farm", className: "bg-green-100 text-green-700" },
+      packing_house: { label: "Packer", className: "bg-blue-100 text-blue-700" },
+      processor: { label: "Processor", className: "bg-purple-100 text-purple-700" },
+      distributor: { label: "Distributor", className: "bg-orange-100 text-orange-700" },
+      retailer: { label: "Retailer", className: "bg-pink-100 text-pink-700" },
+      importer: { label: "Importer", className: "bg-cyan-100 text-cyan-700" },
+      port: { label: "Port", className: "bg-slate-100 text-slate-700" },
+    }
+    return config[orgType] || { label: orgType, className: "bg-gray-100 text-gray-600" }
+  }
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -365,7 +384,7 @@ export default function AdminUsersPage() {
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              d="M13 16h-1v-4h-1m1-4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
             />
           </svg>
           <div>
@@ -547,6 +566,78 @@ export default function AdminUsersPage() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="organizationType" className="flex items-center gap-2">
+                    Loại tổ chức *
+                    <a
+                      href="https://www.fda.gov/food/food-safety-modernization-act-fsma/fsma-final-rule-food-traceability"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline text-xs"
+                    >
+                      (Theo FSMA 204)
+                    </a>
+                  </Label>
+                  <Select value={organizationType} onValueChange={setOrganizationType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn loại tổ chức" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="farm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">🌾 Trang trại (Farm)</span>
+                          <span className="text-xs text-muted-foreground">CTE: Harvest, Cooling, Shipping</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="packing_house">
+                        <div className="flex flex-col">
+                          <span className="font-medium">📦 Nhà đóng gói (Packing House)</span>
+                          <span className="text-xs text-muted-foreground">
+                            CTE: Cooling, Packing, Receiving, Shipping
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="processor">
+                        <div className="flex flex-col">
+                          <span className="font-medium">🏭 Nhà máy chế biến (Processor)</span>
+                          <span className="text-xs text-muted-foreground">
+                            CTE: Receiving, Transformation, Shipping
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="distributor">
+                        <div className="flex flex-col">
+                          <span className="font-medium">🚚 Nhà phân phối (Distributor)</span>
+                          <span className="text-xs text-muted-foreground">CTE: Receiving, Shipping</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="retailer">
+                        <div className="flex flex-col">
+                          <span className="font-medium">🏪 Nhà bán lẻ (Retailer)</span>
+                          <span className="text-xs text-muted-foreground">CTE: Receiving only</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="importer">
+                        <div className="flex flex-col">
+                          <span className="font-medium">🛃 Nhà nhập khẩu (Importer)</span>
+                          <span className="text-xs text-muted-foreground">
+                            CTE: First Receiving, Receiving, Shipping
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="port_operator">
+                        <div className="flex flex-col">
+                          <span className="font-medium">⚓ Cơ sở cảng biển (Port Operator)</span>
+                          <span className="text-xs text-muted-foreground">CTE: First Receiving only</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Loại tổ chức xác định CTE nào user được phép tạo theo quy định FSMA 204
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -743,6 +834,7 @@ export default function AdminUsersPage() {
               <TableRow>
                 <TableHead>Họ tên</TableHead>
                 <TableHead>Vai trò</TableHead>
+                <TableHead>Tổ chức</TableHead>
                 <TableHead>Số điện thoại</TableHead>
                 <TableHead>Ngày tạo</TableHead>
                 <TableHead>Hành động</TableHead>
@@ -754,6 +846,11 @@ export default function AdminUsersPage() {
                   <TableCell className="font-medium">{profile.full_name}</TableCell>
                   <TableCell>
                     <Badge className={getRoleBadge(profile.role)}>{getRoleDisplayName(profile.role, locale)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={getOrganizationBadge(profile.organization_type).className}>
+                      {getOrganizationBadge(profile.organization_type).label}
+                    </Badge>
                   </TableCell>
                   <TableCell>{profile.phone || "-"}</TableCell>
                   <TableCell>{new Date(profile.created_at).toLocaleDateString("vi-VN")}</TableCell>

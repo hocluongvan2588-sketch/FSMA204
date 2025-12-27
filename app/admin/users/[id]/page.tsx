@@ -2,7 +2,6 @@
 
 import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -104,9 +103,15 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   const loadCompanies = async () => {
-    const supabase = createClient()
-    const { data } = await supabase.from("companies").select("id, name").order("name")
-    if (data) setCompanies(data)
+    try {
+      const response = await fetch("/api/admin/companies")
+      if (response.ok) {
+        const data = await response.json()
+        setCompanies(data)
+      }
+    } catch (error) {
+      console.error("[v0] Error loading companies:", error)
+    }
   }
 
   const handleSaveProfile = async () => {

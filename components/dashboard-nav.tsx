@@ -10,10 +10,12 @@ import { useLanguage } from "@/contexts/language-context"
 import { LanguageSwitcher } from "@/components/language-switcher"
 import { Badge } from "@/components/ui/badge"
 import { useState } from "react"
+import { isMenuItemVisibleForOrgType } from "@/lib/utils/cte-permissions"
 import {
   Home,
   Bell,
   Search,
+  Building2,
   Package,
   Tag,
   FileText,
@@ -72,34 +74,46 @@ export function DashboardNav({ user, profile }: DashboardNavProps) {
 
   const overviewNav = [{ name: "Tổng quan", href: "/dashboard", icon: Home, dataTour: undefined }]
 
-  const productionNav = [
-    ...(canAccessLots(orgType) ? [{ name: "Mã TLC", href: "/dashboard/lots", icon: Tag, dataTour: "tlc-codes" }] : []),
-    ...(canAccessShipments(orgType)
-      ? [{ name: "Lô hàng", href: "/dashboard/shipments", icon: Truck, dataTour: "shipments" }]
-      : []),
+  const setupNav = [
+    { name: "Sản phẩm", href: "/dashboard/products", icon: Package, dataTour: "products" },
+    { name: "Kho tại chỗ", href: "/dashboard/facilities", icon: Factory, dataTour: "facilities" },
+    { name: "Đội ngũ Operator", href: "/dashboard/operator", icon: Users2, dataTour: undefined },
   ]
 
-  const operationsNav = [
-    { name: "Đội ngũ Operator", href: "/dashboard/operator", icon: Users2, dataTour: undefined },
-    { name: "Kho tại chỗ", href: "/dashboard/facilities", icon: Factory, dataTour: "facilities" },
-    { name: "Sản phẩm", href: "/dashboard/products", icon: Package, dataTour: "products" },
-    ...(canAccessCTE(orgType)
+  const productionNav = [
+    ...(canAccessLots(orgType) && isMenuItemVisibleForOrgType(orgType, "lots")
+      ? [{ name: "Mã TLC", href: "/dashboard/lots", icon: Tag, dataTour: "tlc-codes" }]
+      : []),
+    ...(canAccessCTE(orgType) && isMenuItemVisibleForOrgType(orgType, "cte")
       ? [{ name: "Sự kiện CTE", href: "/dashboard/cte", icon: FileText, dataTour: "cte-events" }]
       : []),
-    { name: "Báo cáo FSMA 204", href: "/dashboard/reports", icon: BarChart3, dataTour: "reports" },
-  ]
-
-  const systemNav = [
-    { name: "Cảnh báo", href: "/dashboard/alerts", icon: AlertTriangle, dataTour: "alerts" },
-    { name: "Thông báo", href: "/dashboard/notifications", icon: Bell, dataTour: "notifications" },
-    { name: "Cài đặt thiết bị", href: "/dashboard/settings", icon: Settings, dataTour: undefined },
-    { name: "Truy xuất nguồn gốc", href: "/dashboard/traceability", icon: Search, dataTour: "traceability" },
-    ...(canAccessReconciliation(orgType)
-      ? [{ name: "Đối soát hàng loạt", href: "/dashboard/reconciliation", icon: FileCheck, dataTour: "reconciliation" }]
+    ...(canAccessShipments(orgType) && isMenuItemVisibleForOrgType(orgType, "shipments")
+      ? [{ name: "Lô hàng", href: "/dashboard/shipments", icon: Truck, dataTour: "shipments" }]
+      : []),
+    ...(isMenuItemVisibleForOrgType(orgType, "traceability")
+      ? [{ name: "Truy xuất nguồn gốc", href: "/dashboard/traceability", icon: Search, dataTour: "traceability" }]
       : []),
   ]
 
-  const adminNav = [{ name: "Quản trị viên", href: "/admin", icon: ShieldCheck }]
+  const complianceNav = [
+    ...(isMenuItemVisibleForOrgType(orgType, "reports")
+      ? [{ name: "Báo cáo FSMA 204", href: "/dashboard/reports", icon: BarChart3, dataTour: "reports" }]
+      : []),
+    ...(canAccessReconciliation(orgType) && isMenuItemVisibleForOrgType(orgType, "reconciliation")
+      ? [{ name: "Đối soát hàng loạt", href: "/dashboard/reconciliation", icon: FileCheck, dataTour: "reconciliation" }]
+      : []),
+    ...(isMenuItemVisibleForOrgType(orgType, "alerts")
+      ? [{ name: "Cảnh báo", href: "/dashboard/alerts", icon: AlertTriangle, dataTour: "alerts" }]
+      : []),
+  ]
+
+  const adminNotificationNav = [
+    { name: "Thông báo", href: "/dashboard/notifications", icon: Bell, dataTour: "notifications" },
+    { name: "Công ty", href: "/dashboard/company", icon: Building2, dataTour: "company-info" },
+    { name: "Cài đặt thiết bị", href: "/dashboard/settings", icon: Settings, dataTour: undefined },
+  ]
+
+  const systemAdminNav = [{ name: "Quản trị viên", href: "/admin", icon: ShieldCheck }]
 
   const getOrgTypeBadge = (orgType: string | null) => {
     const orgTypeMap: Record<string, { label: string; color: string }> = {
@@ -194,14 +208,17 @@ export function DashboardNav({ user, profile }: DashboardNavProps) {
 
       <nav className="flex-1 overflow-y-auto p-4">
         {renderNavSection("", overviewNav)}
-        {renderNavSection("SẢN XUẤT", productionNav)}
-        {renderNavSection("VẬN HÀNH", operationsNav)}
-        {renderNavSection("HỆ THỐNG", systemNav)}
+        {renderNavSection("THIẾT LẬP HỆ THỐNG", setupNav)}
+        {renderNavSection("SẢN XUẤT & TRUY XUẤT", productionNav)}
+        {renderNavSection("BÁO CÁO & TUÂN THỦ", complianceNav)}
+
+        {!collapsed && <div className="my-4 border-t" />}
+        {renderNavSection("QUẢN TRỊ & THÔNG BÁO", adminNotificationNav)}
 
         {isAdminUser && (
           <>
             {!collapsed && <div className="my-4 border-t" />}
-            {renderNavSection("QUẢN TRỊ", adminNav)}
+            {renderNavSection("HỆ THỐNG", systemAdminNav)}
           </>
         )}
       </nav>

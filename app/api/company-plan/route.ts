@@ -14,9 +14,9 @@ export async function GET(request: Request) {
 
     const { data: subscription } = await supabase
       .from("company_subscriptions")
-      .select("subscription_status, service_packages(package_name, package_code)")
+      .select("status, service_packages!inner(name)")
       .eq("company_id", companyId)
-      .in("subscription_status", ["active", "trial"])
+      .in("status", ["active", "trial"])
       .order("start_date", { ascending: false })
       .limit(1)
       .single()
@@ -31,11 +31,13 @@ export async function GET(request: Request) {
       })
     }
 
+    const pkg = subscription.service_packages as any
+
     return NextResponse.json({
       plan: {
-        name: subscription.service_packages.package_name,
-        code: subscription.service_packages.package_code,
-        status: subscription.subscription_status,
+        name: pkg.name,
+        code: pkg.name.toUpperCase().replace(/\s+/g, "_"), // Generate code from name
+        status: subscription.status,
       },
     })
   } catch (error) {

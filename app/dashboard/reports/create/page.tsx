@@ -18,7 +18,7 @@ export default function CreateReportPage() {
   const [facilities, setFacilities] = useState<any[]>([])
   const [reportType, setReportType] = useState("internal")
   const [complianceStatus, setComplianceStatus] = useState("compliant")
-  const [selectedFacility, setSelectedFacility] = useState("")
+  const [selectedFacility, setSelectedFacility] = useState("none")
   const router = useRouter()
   const supabase = createClient()
 
@@ -35,11 +35,20 @@ export default function CreateReportPage() {
     setIsLoading(true)
     setError(null)
 
-    const formData = new FormData(e.currentTarget)
+    let formData: FormData
+    try {
+      formData = new FormData(e.currentTarget)
+    } catch (err) {
+      console.error("[v0] FormData construction error:", err)
+      setError("Lỗi khi xử lý form. Vui lòng thử lại.")
+      setIsLoading(false)
+      return
+    }
+
     const data = {
       report_number: formData.get("report_number") as string,
       report_type: reportType,
-      facility_id: selectedFacility || null,
+      facility_id: selectedFacility === "none" ? null : selectedFacility,
       audit_date: formData.get("audit_date") as string,
       auditor_name: formData.get("auditor_name") as string,
       auditor_organization: formData.get("auditor_organization") as string,
@@ -117,7 +126,7 @@ export default function CreateReportPage() {
                     <SelectValue placeholder="Chọn cơ sở (tùy chọn)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Không chọn cơ sở</SelectItem>
+                    <SelectItem value="none">Không chọn cơ sở</SelectItem>
                     {facilities.map((facility) => (
                       <SelectItem key={facility.id} value={facility.id}>
                         {facility.name} ({facility.location_code})

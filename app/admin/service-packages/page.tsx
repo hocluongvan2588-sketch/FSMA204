@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { useLanguage } from "@/contexts/language-context"
 import { Package, Plus, Edit, Trash2, Star } from "lucide-react"
 import { isSystemAdmin } from "@/lib/auth/roles"
 import {
@@ -22,33 +21,30 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
+import { useLanguage } from "@/contexts/language-context"
 
 interface ServicePackage {
   id: string
-  package_code: string
-  package_name: string
-  package_name_vi: string
+  name: string
   description: string
-  description_vi: string
   price_monthly: number
   price_yearly: number
-  price_currency: string
-  max_users: number
-  max_facilities: number
-  max_products: number
-  max_storage_gb: number
-  includes_fda_management: boolean
-  includes_agent_management: boolean
-  includes_cte_tracking: boolean
-  includes_reporting: boolean
-  includes_api_access: boolean
-  includes_custom_branding: boolean
-  includes_priority_support: boolean
+  features: {
+    api_access?: boolean
+    priority_support?: boolean
+    custom_branding?: boolean
+    advanced_reporting?: boolean
+    sso?: boolean
+  }
+  limits: {
+    max_users?: number
+    max_facilities?: number
+    max_products?: number
+    max_storage_gb?: number
+  }
   is_active: boolean
-  is_featured: boolean
-  sort_order: number
+  display_order: number
   created_at: string
-  updated_at: string
 }
 
 export default function AdminServicePackagesPage() {
@@ -62,28 +58,25 @@ export default function AdminServicePackagesPage() {
 
   // Form state
   const [formData, setFormData] = useState({
-    package_code: "",
-    package_name: "",
-    package_name_vi: "",
+    name: "",
     description: "",
-    description_vi: "",
     price_monthly: 0,
     price_yearly: 0,
-    price_currency: "USD",
-    max_users: 5,
-    max_facilities: 1,
-    max_products: 10,
-    max_storage_gb: 1,
-    includes_fda_management: false,
-    includes_agent_management: false,
-    includes_cte_tracking: false,
-    includes_reporting: false,
-    includes_api_access: false,
-    includes_custom_branding: false,
-    includes_priority_support: false,
+    features: {
+      api_access: false,
+      priority_support: false,
+      custom_branding: false,
+      advanced_reporting: false,
+      sso: false,
+    },
+    limits: {
+      max_users: 5,
+      max_facilities: 1,
+      max_products: 10,
+      max_storage_gb: 1,
+    },
     is_active: true,
-    is_featured: false,
-    sort_order: 0,
+    display_order: 0,
   })
 
   useEffect(() => {
@@ -107,19 +100,23 @@ export default function AdminServicePackagesPage() {
     const supabase = createClient()
 
     try {
+      console.log("[v0] Fetching service packages...")
+
       const { data, error } = await supabase
         .from("service_packages")
         .select("*")
-        .order("sort_order", { ascending: true })
+        .order("display_order", { ascending: true })
+
+      console.log("[v0] Packages fetch result:", { data, error, count: data?.length })
 
       if (error) throw error
       setPackages(data || [])
     } catch (error) {
-      console.error("Error loading packages:", error)
+      console.error("[v0] Error loading packages:", error)
       toast({
         variant: "destructive",
-        title: t("error_loading_data"),
-        description: error instanceof Error ? error.message : t("unknown_error"),
+        title: "Error loading packages",
+        description: error instanceof Error ? error.message : "Unknown error",
       })
     } finally {
       setIsLoading(false)
@@ -136,7 +133,7 @@ export default function AdminServicePackagesPage() {
 
       toast({
         title: t("package_created_successfully"),
-        description: t("package_created", { name: formData.package_name }),
+        description: t("package_created", { name: formData.name }),
       })
 
       setShowCreateDialog(false)
@@ -164,7 +161,7 @@ export default function AdminServicePackagesPage() {
 
       toast({
         title: t("updated_successfully"),
-        description: t("package_updated", { name: formData.package_name }),
+        description: t("package_updated", { name: formData.name }),
       })
 
       setEditingPackage(null)
@@ -181,7 +178,7 @@ export default function AdminServicePackagesPage() {
   }
 
   const handleDeletePackage = async (pkg: ServicePackage) => {
-    if (!confirm(t("confirm_delete_package", { name: pkg.package_name }))) return
+    if (!confirm(t("confirm_delete_package", { name: pkg.name }))) return
 
     const supabase = createClient()
 
@@ -192,7 +189,7 @@ export default function AdminServicePackagesPage() {
 
       toast({
         title: t("deleted_successfully"),
-        description: t("package_deleted", { name: pkg.package_name }),
+        description: t("package_deleted", { name: pkg.name }),
       })
 
       loadPackages()
@@ -209,55 +206,49 @@ export default function AdminServicePackagesPage() {
   const openEditDialog = (pkg: ServicePackage) => {
     setEditingPackage(pkg)
     setFormData({
-      package_code: pkg.package_code,
-      package_name: pkg.package_name,
-      package_name_vi: pkg.package_name_vi,
+      name: pkg.name,
       description: pkg.description,
-      description_vi: pkg.description_vi,
       price_monthly: pkg.price_monthly,
       price_yearly: pkg.price_yearly,
-      price_currency: pkg.price_currency,
-      max_users: pkg.max_users,
-      max_facilities: pkg.max_facilities,
-      max_products: pkg.max_products,
-      max_storage_gb: pkg.max_storage_gb,
-      includes_fda_management: pkg.includes_fda_management,
-      includes_agent_management: pkg.includes_agent_management,
-      includes_cte_tracking: pkg.includes_cte_tracking,
-      includes_reporting: pkg.includes_reporting,
-      includes_api_access: pkg.includes_api_access,
-      includes_custom_branding: pkg.includes_custom_branding,
-      includes_priority_support: pkg.includes_priority_support,
+      features: {
+        api_access: pkg.features.api_access || false,
+        priority_support: pkg.features.priority_support || false,
+        custom_branding: pkg.features.custom_branding || false,
+        advanced_reporting: pkg.features.advanced_reporting || false,
+        sso: pkg.features.sso || false,
+      },
+      limits: {
+        max_users: pkg.limits.max_users || 5,
+        max_facilities: pkg.limits.max_facilities || 1,
+        max_products: pkg.limits.max_products || 10,
+        max_storage_gb: pkg.limits.max_storage_gb || 1,
+      },
       is_active: pkg.is_active,
-      is_featured: pkg.is_featured,
-      sort_order: pkg.sort_order,
+      display_order: pkg.display_order,
     })
   }
 
   const resetForm = () => {
     setFormData({
-      package_code: "",
-      package_name: "",
-      package_name_vi: "",
+      name: "",
       description: "",
-      description_vi: "",
       price_monthly: 0,
       price_yearly: 0,
-      price_currency: "USD",
-      max_users: 5,
-      max_facilities: 1,
-      max_products: 10,
-      max_storage_gb: 1,
-      includes_fda_management: false,
-      includes_agent_management: false,
-      includes_cte_tracking: false,
-      includes_reporting: false,
-      includes_api_access: false,
-      includes_custom_branding: false,
-      includes_priority_support: false,
+      features: {
+        api_access: false,
+        priority_support: false,
+        custom_branding: false,
+        advanced_reporting: false,
+        sso: false,
+      },
+      limits: {
+        max_users: 5,
+        max_facilities: 1,
+        max_products: 10,
+        max_storage_gb: 1,
+      },
       is_active: true,
-      is_featured: false,
-      sort_order: 0,
+      display_order: 0,
     })
   }
 
@@ -325,7 +316,7 @@ export default function AdminServicePackagesPage() {
             <Star className="h-5 w-5 text-yellow-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{packages.filter((p) => p.is_featured).length}</div>
+            <div className="text-3xl font-bold">{packages.filter((p) => p.features.custom_branding).length}</div>
           </CardContent>
         </Card>
 
@@ -353,8 +344,8 @@ export default function AdminServicePackagesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("code")}</TableHead>
                   <TableHead>{t("name")}</TableHead>
+                  <TableHead>{t("description")}</TableHead>
                   <TableHead>{t("price")}</TableHead>
                   <TableHead>{t("limits")}</TableHead>
                   <TableHead>{t("features")}</TableHead>
@@ -366,18 +357,13 @@ export default function AdminServicePackagesPage() {
                 {packages.map((pkg) => (
                   <TableRow key={pkg.id}>
                     <TableCell>
-                      <Badge variant="outline">{pkg.package_code}</Badge>
+                      <div className="font-medium flex items-center gap-2">
+                        {pkg.name}
+                        {pkg.features.custom_branding && <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <div>
-                        <div className="font-medium flex items-center gap-2">
-                          {locale === "vi" ? pkg.package_name_vi : pkg.package_name}
-                          {pkg.is_featured && <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />}
-                        </div>
-                        <div className="text-sm text-muted-foreground line-clamp-1">
-                          {locale === "vi" ? pkg.description_vi : pkg.description}
-                        </div>
-                      </div>
+                      <div className="text-sm text-muted-foreground line-clamp-1">{pkg.description}</div>
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
@@ -392,44 +378,44 @@ export default function AdminServicePackagesPage() {
                     <TableCell>
                       <div className="text-xs space-y-1">
                         <div>
-                          {pkg.max_users} {t("users")}
+                          {pkg.limits.max_users} {t("users")}
                         </div>
                         <div>
-                          {pkg.max_facilities} {t("facilities")}
+                          {pkg.limits.max_facilities} {t("facilities")}
                         </div>
                         <div>
-                          {pkg.max_products} {t("products")}
+                          {pkg.limits.max_products} {t("products")}
                         </div>
                         <div>
-                          {pkg.max_storage_gb} GB {t("storage")}
+                          {pkg.limits.max_storage_gb} GB {t("storage")}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {pkg.includes_fda_management && (
-                          <Badge variant="secondary" className="text-xs">
-                            FDA
-                          </Badge>
-                        )}
-                        {pkg.includes_agent_management && (
-                          <Badge variant="secondary" className="text-xs">
-                            {t("us_agent")}
-                          </Badge>
-                        )}
-                        {pkg.includes_cte_tracking && (
-                          <Badge variant="secondary" className="text-xs">
-                            CTE
-                          </Badge>
-                        )}
-                        {pkg.includes_reporting && (
-                          <Badge variant="secondary" className="text-xs">
-                            {t("reports")}
-                          </Badge>
-                        )}
-                        {pkg.includes_api_access && (
+                        {pkg.features.api_access && (
                           <Badge variant="secondary" className="text-xs">
                             API
+                          </Badge>
+                        )}
+                        {pkg.features.priority_support && (
+                          <Badge variant="secondary" className="text-xs">
+                            {t("priority_support")}
+                          </Badge>
+                        )}
+                        {pkg.features.custom_branding && (
+                          <Badge variant="secondary" className="text-xs">
+                            {t("custom_branding")}
+                          </Badge>
+                        )}
+                        {pkg.features.advanced_reporting && (
+                          <Badge variant="secondary" className="text-xs">
+                            {t("advanced_reporting")}
+                          </Badge>
+                        )}
+                        {pkg.features.sso && (
+                          <Badge variant="secondary" className="text-xs">
+                            SSO
                           </Badge>
                         )}
                       </div>
@@ -472,63 +458,32 @@ export default function AdminServicePackagesPage() {
             {/* Basic Info */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="package_code">{t("package_code")} *</Label>
+                <Label htmlFor="name">{t("package_name")} *</Label>
                 <Input
-                  id="package_code"
-                  value={formData.package_code}
-                  onChange={(e) => setFormData({ ...formData, package_code: e.target.value })}
-                  placeholder="BASIC, PRO, ENTERPRISE"
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="sort_order">{t("sort_order")}</Label>
+                <Label htmlFor="display_order">{t("sort_order")}</Label>
                 <Input
-                  id="sort_order"
+                  id="display_order"
                   type="number"
-                  value={formData.sort_order}
-                  onChange={(e) => setFormData({ ...formData, sort_order: Number.parseInt(e.target.value) })}
+                  value={formData.display_order}
+                  onChange={(e) => setFormData({ ...formData, display_order: Number.parseInt(e.target.value) })}
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="package_name">{t("package_name_english")} *</Label>
-                <Input
-                  id="package_name"
-                  value={formData.package_name}
-                  onChange={(e) => setFormData({ ...formData, package_name: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="package_name_vi">{t("package_name_vietnamese")} *</Label>
-                <Input
-                  id="package_name_vi"
-                  value={formData.package_name_vi}
-                  onChange={(e) => setFormData({ ...formData, package_name_vi: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="description">{t("description_english")}</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description_vi">{t("description_vietnamese")}</Label>
-                <Textarea
-                  id="description_vi"
-                  value={formData.description_vi}
-                  onChange={(e) => setFormData({ ...formData, description_vi: e.target.value })}
-                  rows={3}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">{t("description")}</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={3}
+              />
             </div>
 
             {/* Pricing */}
@@ -553,14 +508,6 @@ export default function AdminServicePackagesPage() {
                     onChange={(e) => setFormData({ ...formData, price_yearly: Number.parseFloat(e.target.value) })}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="price_currency">{t("currency")}</Label>
-                  <Input
-                    id="price_currency"
-                    value={formData.price_currency}
-                    onChange={(e) => setFormData({ ...formData, price_currency: e.target.value })}
-                  />
-                </div>
               </div>
             </div>
 
@@ -573,8 +520,13 @@ export default function AdminServicePackagesPage() {
                   <Input
                     id="max_users"
                     type="number"
-                    value={formData.max_users}
-                    onChange={(e) => setFormData({ ...formData, max_users: Number.parseInt(e.target.value) })}
+                    value={formData.limits.max_users}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        limits: { ...formData.limits, max_users: Number.parseInt(e.target.value) },
+                      })
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -582,8 +534,13 @@ export default function AdminServicePackagesPage() {
                   <Input
                     id="max_facilities"
                     type="number"
-                    value={formData.max_facilities}
-                    onChange={(e) => setFormData({ ...formData, max_facilities: Number.parseInt(e.target.value) })}
+                    value={formData.limits.max_facilities}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        limits: { ...formData.limits, max_facilities: Number.parseInt(e.target.value) },
+                      })
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -591,8 +548,13 @@ export default function AdminServicePackagesPage() {
                   <Input
                     id="max_products"
                     type="number"
-                    value={formData.max_products}
-                    onChange={(e) => setFormData({ ...formData, max_products: Number.parseInt(e.target.value) })}
+                    value={formData.limits.max_products}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        limits: { ...formData.limits, max_products: Number.parseInt(e.target.value) },
+                      })
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -600,8 +562,13 @@ export default function AdminServicePackagesPage() {
                   <Input
                     id="max_storage_gb"
                     type="number"
-                    value={formData.max_storage_gb}
-                    onChange={(e) => setFormData({ ...formData, max_storage_gb: Number.parseFloat(e.target.value) })}
+                    value={formData.limits.max_storage_gb}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        limits: { ...formData.limits, max_storage_gb: Number.parseFloat(e.target.value) },
+                      })
+                    }
                   />
                 </div>
               </div>
@@ -612,59 +579,53 @@ export default function AdminServicePackagesPage() {
               <h3 className="font-semibold mb-3">{t("features")}</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="fda">{t("fda_management")}</Label>
+                  <Label htmlFor="api_access">{t("api_access")}</Label>
                   <Switch
-                    id="fda"
-                    checked={formData.includes_fda_management}
-                    onCheckedChange={(checked) => setFormData({ ...formData, includes_fda_management: checked })}
+                    id="api_access"
+                    checked={formData.features.api_access}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, features: { ...formData.features, api_access: checked } })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="agent">{t("agent_management")}</Label>
+                  <Label htmlFor="priority_support">{t("priority_support")}</Label>
                   <Switch
-                    id="agent"
-                    checked={formData.includes_agent_management}
-                    onCheckedChange={(checked) => setFormData({ ...formData, includes_agent_management: checked })}
+                    id="priority_support"
+                    checked={formData.features.priority_support}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, features: { ...formData.features, priority_support: checked } })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="cte">{t("cte_tracking")}</Label>
+                  <Label htmlFor="custom_branding">{t("custom_branding")}</Label>
                   <Switch
-                    id="cte"
-                    checked={formData.includes_cte_tracking}
-                    onCheckedChange={(checked) => setFormData({ ...formData, includes_cte_tracking: checked })}
+                    id="custom_branding"
+                    checked={formData.features.custom_branding}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, features: { ...formData.features, custom_branding: checked } })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="reporting">{t("reporting")}</Label>
+                  <Label htmlFor="advanced_reporting">{t("advanced_reporting")}</Label>
                   <Switch
-                    id="reporting"
-                    checked={formData.includes_reporting}
-                    onCheckedChange={(checked) => setFormData({ ...formData, includes_reporting: checked })}
+                    id="advanced_reporting"
+                    checked={formData.features.advanced_reporting}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, features: { ...formData.features, advanced_reporting: checked } })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="api">{t("api_access")}</Label>
+                  <Label htmlFor="sso">{t("sso")}</Label>
                   <Switch
-                    id="api"
-                    checked={formData.includes_api_access}
-                    onCheckedChange={(checked) => setFormData({ ...formData, includes_api_access: checked })}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="branding">{t("custom_branding")}</Label>
-                  <Switch
-                    id="branding"
-                    checked={formData.includes_custom_branding}
-                    onCheckedChange={(checked) => setFormData({ ...formData, includes_custom_branding: checked })}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="support">{t("priority_support")}</Label>
-                  <Switch
-                    id="support"
-                    checked={formData.includes_priority_support}
-                    onCheckedChange={(checked) => setFormData({ ...formData, includes_priority_support: checked })}
+                    id="sso"
+                    checked={formData.features.sso}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, features: { ...formData.features, sso: checked } })
+                    }
                   />
                 </div>
               </div>
@@ -679,14 +640,6 @@ export default function AdminServicePackagesPage() {
                     id="is_active"
                     checked={formData.is_active}
                     onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="is_featured">{t("featured")}</Label>
-                  <Switch
-                    id="is_featured"
-                    checked={formData.is_featured}
-                    onCheckedChange={(checked) => setFormData({ ...formData, is_featured: checked })}
                   />
                 </div>
               </div>

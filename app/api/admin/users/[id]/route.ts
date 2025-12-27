@@ -45,6 +45,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const adminClient = createServiceRoleClient()
 
+    let email = "N/A"
+    let lastSignIn = null
+    let authUser = null
+
+    try {
+      const { data: authData, error: authDataError } = await adminClient.auth.admin.getUserById(userId)
+
+      if (authDataError) {
+        console.error("[v0] Auth data fetch error:", authDataError)
+        return NextResponse.json({ error: "User not found in authentication system" }, { status: 404 })
+      } else if (authData && authData.user) {
+        authUser = authData.user
+        email = authData.user.email || "N/A"
+        lastSignIn = authData.user.last_sign_in_at
+      }
+    } catch (authErr) {
+      console.error("[v0] Failed to fetch auth data:", authErr)
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
     const { data: profile, error: userError } = await adminClient
       .from("profiles")
       .select(
@@ -53,44 +73,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq("id", userId)
       .single()
 
-    if (userError) {
+    if (userError && userError.code !== "PGRST116") {
       console.error("[v0] User fetch error:", userError)
-      return NextResponse.json({ error: "User not found", details: userError.message }, { status: 404 })
+      return NextResponse.json({ error: "Error fetching user profile", details: userError.message }, { status: 500 })
     }
 
-    if (!profile) {
-      console.error("[v0] Profile is null for user:", userId)
-      return NextResponse.json({ error: "User profile is null" }, { status: 404 })
+    const userProfile = profile || {
+      id: userId,
+      company_id: null,
+      full_name: authUser?.user_metadata?.full_name || email,
+      role: authUser?.user_metadata?.role || "viewer",
+      phone: null,
+      language_preference: "vi",
+      created_at: authUser?.created_at || new Date().toISOString(),
+      updated_at: authUser?.updated_at || new Date().toISOString(),
+      organization_type: null,
+      allowed_cte_types: null,
     }
 
-    console.log("[v0] Fetched profile:", profile)
+    console.log("[v0] User profile:", userProfile)
 
-    if (!isSystemAdmin && profile.company_id && profile.company_id !== currentProfile.company_id) {
-      console.error("[v0] Company mismatch. Target:", profile.company_id, "Current:", currentProfile.company_id)
+    if (!isSystemAdmin && userProfile.company_id && userProfile.company_id !== currentProfile.company_id) {
+      console.error("[v0] Company mismatch. Target:", userProfile.company_id, "Current:", currentProfile.company_id)
       return NextResponse.json({ error: "Cannot access users from other companies" }, { status: 403 })
-    }
-
-    let email = "N/A"
-    let lastSignIn = null
-
-    try {
-      const { data: authData, error: authDataError } = await adminClient.auth.admin.getUserById(userId)
-
-      if (authDataError) {
-        console.error("[v0] Auth data fetch error:", authDataError)
-      } else if (authData && authData.user) {
-        email = authData.user.email || "N/A"
-        lastSignIn = authData.user.last_sign_in_at
-      }
-    } catch (authErr) {
-      console.error("[v0] Failed to fetch auth data:", authErr)
-      // Continue anyway with N/A email
     }
 
     console.log("[v0] Returning user data with email:", email)
 
     return NextResponse.json({
-      profile,
+      profile: userProfile,
       auth: {
         email,
         last_sign_in_at: lastSignIn,

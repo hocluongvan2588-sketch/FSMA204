@@ -4,9 +4,8 @@ import { Badge } from "@/components/ui/badge"
 import { Check, X, Sparkles, Zap, Rocket, Crown } from "lucide-react"
 import Link from "next/link"
 import { getAllPlanConfigs, type PlanConfig } from "@/lib/plan-config"
-import type { JSX } from "react"
+import type { JSX } from "react" // Import JSX to fix the undeclared variable error
 import { createClient } from "@/lib/supabase/server"
-import { SubscribeButton } from "@/app/admin/my-subscription/subscribe-button"
 
 export const metadata = {
   title: "Bảng giá | Vexim FSMA 204",
@@ -28,6 +27,7 @@ const renderFeatures = (plan: PlanConfig) => {
   const { limits, features } = plan
 
   return [
+    // Quotas (always shown)
     {
       label: `${limits.users === -1 ? "Không giới hạn" : limits.users} người dùng`,
       included: true,
@@ -44,6 +44,7 @@ const renderFeatures = (plan: PlanConfig) => {
       label: `${limits.storage_gb} GB dung lượng`,
       included: true,
     },
+    // Features (driven by config)
     { label: "Tạo TLC & QR Codes", included: features.qr_code },
     { label: "CTE Tracking đầy đủ", included: features.cte_tracking },
     { label: "Quản lý KDE", included: features.kde_management },
@@ -53,6 +54,7 @@ const renderFeatures = (plan: PlanConfig) => {
     { label: "API Access", included: features.api_access },
     { label: "Custom Branding", included: features.custom_branding },
     { label: "Hỗ trợ ưu tiên", included: features.priority_support },
+    // Watermark warning for FREE
     ...(features.watermark ? [{ label: '⚠️ Có watermark "Powered by Vexim"', included: false }] : []),
   ]
 }
@@ -64,13 +66,11 @@ export default async function AdminPricingPage() {
   } = await supabase.auth.getUser()
 
   let currentPackageCode: string | null = null
-  let userCompanyId: string | null = null
 
   if (user) {
     const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
 
     if (profile?.company_id) {
-      userCompanyId = profile.company_id
       const { data: subscription } = await supabase
         .from("company_subscriptions")
         .select("service_packages(package_code)")
@@ -218,13 +218,9 @@ export default async function AdminPricingPage() {
                       <Link href="/contact">Liên hệ sales</Link>
                     </Button>
                   ) : (
-                    <SubscribeButton
-                      packageId={plan.plan_id}
-                      companyId={userCompanyId || ""}
-                      packageName={plan.name_vi || plan.name}
-                      monthlyPrice={plan.price_monthly}
-                      yearlyPrice={plan.price_yearly}
-                    />
+                    <Button asChild className={plan.is_featured ? "w-full bg-blue-600 hover:bg-blue-700" : "w-full"}>
+                      <Link href="/admin/my-subscription">Đăng ký ngay</Link>
+                    </Button>
                   )}
                 </CardFooter>
               </Card>

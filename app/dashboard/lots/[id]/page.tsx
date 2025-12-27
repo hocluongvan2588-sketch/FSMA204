@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { Archive, Lock } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default async function LotDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
@@ -26,11 +28,16 @@ export default async function LotDetailPage({ params }: { params: { id: string }
     .eq("tlc_id", id)
     .order("event_date", { ascending: false })
 
+  const hasSubmittedCTEs = ctes?.some((cte: any) => cte.status === "submitted") || false
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 font-mono">{lot.tlc}</h1>
+          <h1 className="text-3xl font-bold text-slate-900 font-mono flex items-center gap-3">
+            {lot.tlc}
+            {lot.is_archived && <Archive className="h-5 w-5 text-slate-400" title="Archived" />}
+          </h1>
           <p className="text-slate-500 mt-1">
             {lot.products?.product_name} - Lô {lot.batch_number}
           </p>
@@ -56,6 +63,26 @@ export default async function LotDetailPage({ params }: { params: { id: string }
                 : "Đã dùng hết"}
         </Badge>
       </div>
+
+      {lot.is_archived && (
+        <Alert className="bg-slate-50 border-slate-200">
+          <Archive className="h-4 w-4 text-slate-600" />
+          <AlertDescription className="text-slate-800">
+            Lô hàng này đã được lưu trữ. Lý do: {lot.archive_reason || "Không rõ"}
+            {lot.archived_at && ` (${new Date(lot.archived_at).toLocaleDateString("vi-VN")})`}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {hasSubmittedCTEs && !lot.is_archived && (
+        <Alert>
+          <Lock className="h-4 w-4" />
+          <AlertDescription>
+            Lô hàng này có {ctes?.filter((c: any) => c.status === "submitted").length} sự kiện CTE đã submit. Không thể
+            xóa hoặc archive theo quy định FDA FSMA 204.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -102,10 +129,30 @@ export default async function LotDetailPage({ params }: { params: { id: string }
               </div>
             )}
             <div>
-              <p className="text-sm text-slate-500">Số lượng</p>
+              <p className="text-sm text-slate-500">Số lượng sản xuất gốc</p>
               <p className="text-base font-medium mt-1">
                 {lot.quantity} {lot.unit}
               </p>
+            </div>
+            <div
+              className={`p-4 rounded-lg border-2 ${
+                (lot.available_quantity || lot.quantity) < 0
+                  ? "bg-red-50 border-red-300"
+                  : "bg-green-50 border-green-300"
+              }`}
+            >
+              <p className="text-sm font-semibold text-slate-700">📦 Tồn kho khả dụng (sau CTE)</p>
+              <p
+                className={`text-2xl font-bold mt-2 ${
+                  (lot.available_quantity || lot.quantity) < 0 ? "text-red-600" : "text-green-600"
+                }`}
+              >
+                {lot.available_quantity !== null && lot.available_quantity !== undefined
+                  ? `${lot.available_quantity}`
+                  : `${lot.quantity}`}{" "}
+                {lot.unit}
+              </p>
+              <p className="text-xs text-slate-600 mt-2">= Sản xuất ({lot.quantity}) + Tiếp nhận - Vận chuyển</p>
             </div>
             <div>
               <p className="text-sm text-slate-500">Ngày tạo</p>
@@ -167,6 +214,13 @@ export default async function LotDetailPage({ params }: { params: { id: string }
         <Button asChild>
           <Link href="/dashboard/lots">Quay lại danh sách</Link>
         </Button>
+
+        {!lot.is_archived && !hasSubmittedCTEs && (
+          <Button variant="outline" className="text-slate-600 bg-transparent">
+            <Archive className="h-4 w-4 mr-2" />
+            Lưu trữ
+          </Button>
+        )}
       </div>
     </div>
   )

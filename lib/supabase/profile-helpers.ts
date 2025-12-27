@@ -70,6 +70,7 @@ export async function ensureProfileExists(user: User) {
 
   const newProfile = {
     id: user.id,
+    email: user.email, // Required field - fixes NOT NULL constraint
     full_name: user.user_metadata?.full_name || user.email || "User",
     role: user.user_metadata?.role || "viewer",
     language_preference: user.user_metadata?.language_preference || "vi",

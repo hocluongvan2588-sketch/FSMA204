@@ -6,6 +6,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { TraceabilityTimeline } from "@/components/traceability-timeline"
 import { TraceabilityAdvanced } from "@/components/traceability-advanced"
+import { calculateCurrentStock } from "@/lib/utils/calculate-current-stock"
 
 export default async function TraceabilityDetailPage({ params }: { params: { tlc: string } }) {
   const supabase = await createClient()
@@ -21,6 +22,28 @@ export default async function TraceabilityDetailPage({ params }: { params: { tlc
     notFound()
   }
 
+  let calculatedStock = lot.quantity
+  let calculatedBreakdown = {
+    production: lot.quantity,
+    receiving: 0,
+    shipping: 0,
+  }
+  let stockError: string | null = null
+
+  try {
+    const stockResult = await calculateCurrentStock(tlc)
+    calculatedStock = stockResult.current_stock
+    calculatedBreakdown = {
+      production: stockResult.total_production,
+      receiving: stockResult.total_receiving,
+      shipping: stockResult.total_shipping,
+    }
+    console.log(`[v0] TLC ${tlc} calculated stock:`, stockResult)
+  } catch (error) {
+    stockError = error instanceof Error ? error.message : "Lỗi tính toán tồn kho"
+    console.error(`[v0] Error calculating stock for ${tlc}:`, error)
+  }
+
   const [ctesData, shipmentsData] = await Promise.all([
     supabase
       .from("critical_tracking_events")
@@ -30,7 +53,7 @@ export default async function TraceabilityDetailPage({ params }: { params: { tlc
     supabase
       .from("shipments")
       .select(
-        "*, from_facility:facilities!shipments_from_facility_id_fkey(name, location_code), to_facility:facilities!shipments_to_facility_id_fkey(name, location_code)",
+        "*, from_facility:facilities!shipments_from_facility_id_fkey(name, location_code, address), to_facility:facilities!shipments_to_facility_id_fkey(name, location_code, address)",
       )
       .eq("tlc_id", lot.id)
       .order("shipment_date", { ascending: true }),
@@ -144,10 +167,51 @@ export default async function TraceabilityDetailPage({ params }: { params: { tlc
               <p className="text-xs text-slate-400">{lot.facilities?.location_code}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-500">Số lượng</p>
+              <p className="text-xs text-slate-500">Số lượng sản xuất gốc</p>
               <p className="text-sm font-medium mt-1">
                 {lot.quantity} {lot.unit}
               </p>
+            </div>
+            <div
+              className={`p-3 rounded-lg border-2 ${
+                calculatedStock < 0
+                  ? "bg-red-50 border-red-300"
+                  : calculatedStock === lot.quantity
+                    ? "bg-blue-50 border-blue-300"
+                    : "bg-green-50 border-green-300"
+              }`}
+            >
+              <p className="text-xs font-semibold text-slate-600">📦 Tồn kho khả dụng (sau CTE)</p>
+              {stockError && <p className="text-xs text-red-600 mb-2">⚠️ {stockError}</p>}
+              <p
+                className={`text-2xl font-bold mt-2 ${
+                  calculatedStock < 0
+                    ? "text-red-600"
+                    : calculatedStock === lot.quantity
+                      ? "text-blue-600"
+                      : "text-green-600"
+                }`}
+              >
+                {calculatedStock} {lot.unit}
+              </p>
+              <div className="mt-3 pt-3 border-t border-current border-opacity-20 text-xs space-y-1">
+                <p className="text-slate-700">
+                  <span className="font-semibold">= Sản xuất gốc:</span> {calculatedBreakdown.production} {lot.unit}
+                </p>
+                {calculatedBreakdown.receiving > 0 && (
+                  <p className="text-slate-700">
+                    <span className="font-semibold">+ Tiếp nhận:</span> {calculatedBreakdown.receiving} {lot.unit}
+                  </p>
+                )}
+                {calculatedBreakdown.shipping > 0 && (
+                  <p className="text-slate-700">
+                    <span className="font-semibold">- Vận chuyển:</span> {calculatedBreakdown.shipping} {lot.unit}
+                  </p>
+                )}
+                {calculatedStock < 0 && (
+                  <p className="text-red-600 font-semibold mt-2">⚠️ CẢNH BÁO: Tồn kho âm (lỗi logic nhập liệu)</p>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

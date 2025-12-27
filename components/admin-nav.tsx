@@ -82,12 +82,6 @@ export function AdminNav({ user, profile }: AdminNavProps) {
       icon: Users,
       description: locale === "vi" ? "Quản lý người dùng" : "User management",
     },
-    {
-      name: locale === "vi" ? "Công ty của tôi" : "My Company",
-      href: "/admin/my-company",
-      icon: Building2,
-      description: locale === "vi" ? "Thông tin công ty" : "Company information",
-    },
   ]
 
   const navigation = isSystemAdmin(profile?.role) ? systemAdminNavigation : companyAdminNavigation

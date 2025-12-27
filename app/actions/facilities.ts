@@ -28,7 +28,14 @@ export async function createFacility(input: CreateFacilityInput) {
 
     const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
 
+    console.log("[v0] User profile fetched:", {
+      userId: user.id,
+      company_id: profile?.company_id,
+      profile_exists: !!profile,
+    })
+
     if (!profile?.company_id) {
+      console.error("[v0] User has no company_id - trigger may not have executed correctly")
       return { error: "Bạn chưa có công ty. Vui lòng tạo công ty trước." }
     }
 
@@ -47,22 +54,36 @@ export async function createFacility(input: CreateFacilityInput) {
       }
     }
 
-    const { data, error } = await supabase
-      .from("facilities")
-      .insert({
-        ...input,
-        company_id: profile.company_id,
-      })
-      .select()
-      .single()
+    const facilityData = {
+      ...input,
+      company_id: profile.company_id,
+    }
+    console.log("[v0] Inserting facility with data:", {
+      facility_name: facilityData.name,
+      company_id: facilityData.company_id,
+      facility_type: facilityData.facility_type,
+    })
+
+    const { data, error } = await supabase.from("facilities").insert(facilityData).select().single()
 
     if (error) {
-      console.error("[v0] Facility creation error:", error)
+      console.error("[v0] Facility creation error:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        company_id: facilityData.company_id,
+      })
       return { error: error.message }
     }
 
     // Increment facility count after successful creation
     await incrementFacilityCount(profile.company_id)
+
+    console.log("[v0] Facility created successfully:", {
+      facilityId: data?.id,
+      company_id: data?.company_id,
+    })
 
     revalidatePath("/dashboard/facilities")
     return { success: true, facility: data }

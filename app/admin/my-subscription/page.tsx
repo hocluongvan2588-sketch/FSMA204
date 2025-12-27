@@ -66,38 +66,44 @@ export default async function AdminMySubscriptionPage() {
     )
   }
 
+  console.log("[v0] Profile company_id:", profile.company_id)
+  console.log("[v0] Profile details:", {
+    id: profile.id,
+    email: profile.email,
+    role: profile.role,
+    company_id: profile.company_id,
+  })
+
   // Fetch current subscription
   const { data: activeSubscription, error: activeError } = await supabase
     .from("company_subscriptions")
     .select(`
       *,
-      service_packages (
+      service_packages!inner (
         id,
-        package_name,
-        package_name_vi,
-        package_code,
+        name,
         description,
-        description_vi,
-        max_users,
-        max_facilities,
-        max_products,
-        max_storage_gb,
-        includes_fda_management,
-        includes_agent_management,
-        includes_cte_tracking,
-        includes_reporting,
-        includes_api_access,
-        includes_custom_branding,
-        includes_priority_support
+        features,
+        limits,
+        price_monthly,
+        price_yearly,
+        display_order
       )
     `)
     .eq("company_id", profile.company_id)
-    .eq("subscription_status", "active")
+    .eq("status", "active")
     .order("start_date", { ascending: false })
     .limit(1)
-    .maybeSingle() // Changed from .single() to avoid errors when no subscription exists
+    .maybeSingle()
 
   console.log("[v0] Active subscription query result:", { activeSubscription, activeError })
+
+  const { data: allCompanySubscriptions } = await supabase
+    .from("company_subscriptions")
+    .select("id, company_id, status, start_date, end_date")
+    .eq("company_id", profile.company_id)
+
+  console.log("[v0] ALL subscriptions for company:", allCompanySubscriptions)
 
   // If no active subscription, check for trial or any subscription
   let finalSubscription = activeSubscription
@@ -108,24 +114,15 @@ export default async function AdminMySubscriptionPage() {
       .from("company_subscriptions")
       .select(`
         *,
-        service_packages (
+        service_packages!inner (
           id,
-          package_name,
-          package_name_vi,
-          package_code,
+          name,
           description,
-          description_vi,
-          max_users,
-          max_facilities,
-          max_products,
-          max_storage_gb,
-          includes_fda_management,
-          includes_agent_management,
-          includes_cte_tracking,
-          includes_reporting,
-          includes_api_access,
-          includes_custom_branding,
-          includes_priority_support
+          features,
+          limits,
+          price_monthly,
+          price_yearly,
+          display_order
         )
       `)
       .eq("company_id", profile.company_id)
@@ -137,26 +134,29 @@ export default async function AdminMySubscriptionPage() {
     finalSubscription = anySubscription
   }
 
+  const isFreeplan =
+    finalSubscription?.service_packages?.price_monthly === 0 ||
+    finalSubscription?.service_packages?.price_monthly === null
   const isExpired =
-    finalSubscription &&
-    finalSubscription.end_date &&
-    new Date(finalSubscription.end_date) < new Date() &&
-    finalSubscription.service_packages?.package_code !== "FREE"
+    finalSubscription && finalSubscription.end_date && new Date(finalSubscription.end_date) < new Date() && !isFreeplan // Free plans never expire
 
   const getFeaturesList = (pkg: any) => {
     const features = []
-    features.push(`${pkg.max_users === -1 ? "Không giới hạn" : pkg.max_users} người dùng`)
-    features.push(`${pkg.max_facilities === -1 ? "Không giới hạn" : pkg.max_facilities} cơ sở`)
-    features.push(`${pkg.max_products === -1 ? "Không giới hạn" : pkg.max_products} sản phẩm`)
-    features.push(`${pkg.max_storage_gb} GB dung lượng`)
 
-    if (pkg.includes_fda_management) features.push("Quản lý FDA Registration")
-    if (pkg.includes_agent_management) features.push("US Agent Management")
-    if (pkg.includes_cte_tracking) features.push("CTE Tracking đầy đủ")
-    if (pkg.includes_reporting) features.push("Báo cáo nâng cao")
-    if (pkg.includes_api_access) features.push("API Access")
-    if (pkg.includes_custom_branding) features.push("Custom Branding")
-    if (pkg.includes_priority_support) features.push("Hỗ trợ ưu tiên")
+    // Read from limits jsonb
+    const limits = pkg.limits || {}
+    const featureFlags = pkg.features || {}
+
+    if (limits.max_users) features.push(`${limits.max_users} người dùng`)
+    if (limits.max_facilities) features.push(`${limits.max_facilities} cơ sở`)
+    if (limits.max_products) features.push(`${limits.max_products} sản phẩm`)
+    if (limits.max_storage_gb) features.push(`${limits.max_storage_gb} GB dung lượng`)
+
+    if (featureFlags.api_access) features.push("Tạo TLC & QR Codes")
+    if (featureFlags.cte_tracking) features.push("CTE Tracking đầy đủ")
+    if (featureFlags.kde_management) features.push("Quản lý KDE")
+    if (featureFlags.fda_registration) features.push("Quản lý FDA Registration")
+    if (featureFlags.agent_management) features.push("Quản lý US Agent")
 
     return features
   }
@@ -222,7 +222,7 @@ export default async function AdminMySubscriptionPage() {
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div>
-                  <CardTitle className="text-2xl">{finalSubscription.service_packages.package_name}</CardTitle>
+                  <CardTitle className="text-2xl">{finalSubscription.service_packages.name}</CardTitle>
                   <CardDescription className="text-base mt-2">
                     {finalSubscription.service_packages.description}
                   </CardDescription>
@@ -231,9 +231,9 @@ export default async function AdminMySubscriptionPage() {
                   variant={
                     isExpired
                       ? "destructive"
-                      : finalSubscription.subscription_status === "active"
+                      : finalSubscription.status === "active"
                         ? "default"
-                        : finalSubscription.subscription_status === "trial"
+                        : finalSubscription.status === "trial"
                           ? "secondary"
                           : "outline"
                   }
@@ -241,9 +241,9 @@ export default async function AdminMySubscriptionPage() {
                 >
                   {isExpired
                     ? "Đã hết hạn"
-                    : finalSubscription.subscription_status === "active"
+                    : finalSubscription.status === "active"
                       ? "Đang hoạt động"
-                      : finalSubscription.subscription_status === "trial"
+                      : finalSubscription.status === "trial"
                         ? "Dùng thử"
                         : "Tạm dừng"}
                 </Badge>
@@ -260,10 +260,10 @@ export default async function AdminMySubscriptionPage() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">
-                    {finalSubscription.service_packages?.package_code === "FREE" ? "Hết hạn" : "Gia hạn tiếp theo"}
+                    {finalSubscription.service_packages?.price_monthly === 0 ? "Hết hạn" : "Gia hạn tiếp theo"}
                   </p>
                   <p className="text-lg font-semibold">
-                    {finalSubscription.service_packages?.package_code === "FREE"
+                    {finalSubscription.service_packages?.price_monthly === 0
                       ? "Miễn phí mãi mãi"
                       : finalSubscription.end_date || finalSubscription.next_billing_date
                         ? format(
@@ -280,7 +280,7 @@ export default async function AdminMySubscriptionPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <div className="flex items-baseline gap-2">
-                    {finalSubscription.service_packages.package_code === "FREE" ? (
+                    {finalSubscription.service_packages.price_monthly === 0 ? (
                       <>
                         <span className="text-4xl font-bold text-slate-900">Miễn phí</span>
                         <span className="text-slate-600">mãi mãi</span>
@@ -300,7 +300,7 @@ export default async function AdminMySubscriptionPage() {
                     )}
                   </div>
                   {finalSubscription.billing_cycle === "yearly" &&
-                    finalSubscription.service_packages.package_code !== "FREE" && (
+                    finalSubscription.service_packages.price_monthly !== 0 && (
                       <p className="text-sm text-green-600 mt-1">Tiết kiệm 17% so với thanh toán hàng tháng</p>
                     )}
                 </div>
@@ -350,29 +350,29 @@ export default async function AdminMySubscriptionPage() {
                   <div
                     className={`text-2xl font-bold ${getUsageColor(
                       getUsagePercentage(
-                        finalSubscription.current_users_count,
-                        finalSubscription.service_packages.max_users,
+                        finalSubscription.current_users_count || 0,
+                        finalSubscription.service_packages.limits.max_users || 0,
                       ),
                     )}`}
                   >
-                    {finalSubscription.current_users_count} /{" "}
-                    {finalSubscription.service_packages.max_users === -1
+                    {finalSubscription.current_users_count || 0} /{" "}
+                    {finalSubscription.service_packages.limits.max_users === -1
                       ? "∞"
-                      : finalSubscription.service_packages.max_users}
+                      : finalSubscription.service_packages.limits.max_users || 0}
                   </div>
-                  {finalSubscription.service_packages.max_users !== -1 && (
+                  {finalSubscription.service_packages.limits.max_users !== -1 && (
                     <>
                       <Progress
                         value={getUsagePercentage(
-                          finalSubscription.current_users_count,
-                          finalSubscription.service_packages.max_users,
+                          finalSubscription.current_users_count || 0,
+                          finalSubscription.service_packages.limits.max_users || 0,
                         )}
                         className="mt-2"
                       />
                       <p className="text-xs text-slate-500 mt-1">
                         {getUsagePercentage(
-                          finalSubscription.current_users_count,
-                          finalSubscription.service_packages.max_users,
+                          finalSubscription.current_users_count || 0,
+                          finalSubscription.service_packages.limits.max_users || 0,
                         )}
                         % đã sử dụng
                       </p>
@@ -392,29 +392,29 @@ export default async function AdminMySubscriptionPage() {
                   <div
                     className={`text-2xl font-bold ${getUsageColor(
                       getUsagePercentage(
-                        finalSubscription.current_facilities_count,
-                        finalSubscription.service_packages.max_facilities,
+                        finalSubscription.current_facilities_count || 0,
+                        finalSubscription.service_packages.limits.max_facilities || 0,
                       ),
                     )}`}
                   >
-                    {finalSubscription.current_facilities_count} /{" "}
-                    {finalSubscription.service_packages.max_facilities === -1
+                    {finalSubscription.current_facilities_count || 0} /{" "}
+                    {finalSubscription.service_packages.limits.max_facilities === -1
                       ? "∞"
-                      : finalSubscription.service_packages.max_facilities}
+                      : finalSubscription.service_packages.limits.max_facilities || 0}
                   </div>
-                  {finalSubscription.service_packages.max_facilities !== -1 && (
+                  {finalSubscription.service_packages.limits.max_facilities !== -1 && (
                     <>
                       <Progress
                         value={getUsagePercentage(
-                          finalSubscription.current_facilities_count,
-                          finalSubscription.service_packages.max_facilities,
+                          finalSubscription.current_facilities_count || 0,
+                          finalSubscription.service_packages.limits.max_facilities || 0,
                         )}
                         className="mt-2"
                       />
                       <p className="text-xs text-slate-500 mt-1">
                         {getUsagePercentage(
-                          finalSubscription.current_facilities_count,
-                          finalSubscription.service_packages.max_facilities,
+                          finalSubscription.current_facilities_count || 0,
+                          finalSubscription.service_packages.limits.max_facilities || 0,
                         )}
                         % đã sử dụng
                       </p>
@@ -434,29 +434,29 @@ export default async function AdminMySubscriptionPage() {
                   <div
                     className={`text-2xl font-bold ${getUsageColor(
                       getUsagePercentage(
-                        finalSubscription.current_products_count,
-                        finalSubscription.service_packages.max_products,
+                        finalSubscription.current_products_count || 0,
+                        finalSubscription.service_packages.limits.max_products || 0,
                       ),
                     )}`}
                   >
-                    {finalSubscription.current_products_count} /{" "}
-                    {finalSubscription.service_packages.max_products === -1
+                    {finalSubscription.current_products_count || 0} /{" "}
+                    {finalSubscription.service_packages.limits.max_products === -1
                       ? "∞"
-                      : finalSubscription.service_packages.max_products}
+                      : finalSubscription.service_packages.limits.max_products || 0}
                   </div>
-                  {finalSubscription.service_packages.max_products !== -1 && (
+                  {finalSubscription.service_packages.limits.max_products !== -1 && (
                     <>
                       <Progress
                         value={getUsagePercentage(
-                          finalSubscription.current_products_count,
-                          finalSubscription.service_packages.max_products,
+                          finalSubscription.current_products_count || 0,
+                          finalSubscription.service_packages.limits.max_products || 0,
                         )}
                         className="mt-2"
                       />
                       <p className="text-xs text-slate-500 mt-1">
                         {getUsagePercentage(
-                          finalSubscription.current_products_count,
-                          finalSubscription.service_packages.max_products,
+                          finalSubscription.current_products_count || 0,
+                          finalSubscription.service_packages.limits.max_products || 0,
                         )}
                         % đã sử dụng
                       </p>
@@ -476,24 +476,25 @@ export default async function AdminMySubscriptionPage() {
                   <div
                     className={`text-2xl font-bold ${getUsageColor(
                       getUsagePercentage(
-                        finalSubscription.current_storage_gb,
-                        finalSubscription.service_packages.max_storage_gb,
+                        finalSubscription.current_storage_gb || 0,
+                        finalSubscription.service_packages.limits.max_storage_gb || 0,
                       ),
                     )}`}
                   >
-                    {finalSubscription.current_storage_gb} / {finalSubscription.service_packages.max_storage_gb} GB
+                    {(finalSubscription.current_storage_gb || 0).toFixed(2)} GB /{" "}
+                    {finalSubscription.service_packages.limits.max_storage_gb || 0} GB
                   </div>
                   <Progress
                     value={getUsagePercentage(
-                      finalSubscription.current_storage_gb,
-                      finalSubscription.service_packages.max_storage_gb,
+                      finalSubscription.current_storage_gb || 0,
+                      finalSubscription.service_packages.limits.max_storage_gb || 0,
                     )}
                     className="mt-2"
                   />
                   <p className="text-xs text-slate-500 mt-1">
                     {getUsagePercentage(
-                      finalSubscription.current_storage_gb,
-                      finalSubscription.service_packages.max_storage_gb,
+                      finalSubscription.current_storage_gb || 0,
+                      finalSubscription.service_packages.limits.max_storage_gb || 0,
                     )}
                     % đã sử dụng
                   </p>
@@ -506,7 +507,7 @@ export default async function AdminMySubscriptionPage() {
             <CardHeader>
               <CardTitle>Tính năng đang sử dụng</CardTitle>
               <CardDescription>
-                Các tính năng bao gồm trong gói {finalSubscription.service_packages.package_name}
+                Các tính năng bao gồm trong gói {finalSubscription.service_packages.name}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -551,7 +552,7 @@ export default async function AdminMySubscriptionPage() {
             </CardContent>
           </Card>
 
-          {finalSubscription.service_packages.package_name !== "Enterprise" && (
+          {finalSubscription.service_packages.name !== "Enterprise" && (
             <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-teal-50">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">

@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 export interface SubscriptionStatus {
   id: string
   companyId: string
-  status: "trial" | "active" | "past_due" | "cancelled" | "expired"
+  status: "trial" | "active" | "past_due" | "cancelled" | "expired" | "free_default"
   trialEndDate: Date | null
   endDate: Date
   packageName: string
@@ -17,11 +17,10 @@ export async function updateExpiredSubscriptions(): Promise<number> {
   const supabase = await createClient()
   const now = new Date()
 
-  // Update subscriptions that have passed their end date
   const { data: expiredSubs, error: fetchError } = await supabase
     .from("company_subscriptions")
-    .select("id")
-    .in("subscription_status", ["active", "trial", "past_due"])
+    .select("id, company_id")
+    .in("status", ["active", "trial", "past_due"])
     .lt("end_date", now.toISOString())
 
   if (fetchError || !expiredSubs) {
@@ -35,7 +34,7 @@ export async function updateExpiredSubscriptions(): Promise<number> {
 
   const { error: updateError } = await supabase
     .from("company_subscriptions")
-    .update({ subscription_status: "expired" })
+    .update({ status: "expired" })
     .in(
       "id",
       expiredSubs.map((s) => s.id),
@@ -51,7 +50,7 @@ export async function updateExpiredSubscriptions(): Promise<number> {
   // Log audit changes
   for (const sub of expiredSubs) {
     await logSubscriptionChange({
-      companyId: sub.id,
+      companyId: sub.company_id,
       action: "expired",
       newStatus: "expired",
     })
@@ -67,11 +66,10 @@ export async function transitionTrialsToActive(): Promise<number> {
   const supabase = await createClient()
   const now = new Date()
 
-  // Find trials that have ended
   const { data: endedTrials, error: fetchError } = await supabase
     .from("company_subscriptions")
-    .select("id, stripe_subscription_id")
-    .eq("subscription_status", "trial")
+    .select("id, company_id, stripe_subscription_id")
+    .eq("status", "trial")
     .lt("trial_end_date", now.toISOString())
 
   if (fetchError || !endedTrials) {
@@ -87,10 +85,9 @@ export async function transitionTrialsToActive(): Promise<number> {
   const subsWithPayment = endedTrials.filter((s) => s.stripe_subscription_id)
 
   if (subsWithPayment.length === 0) {
-    // No payment method - mark as expired
     const { error: expireError } = await supabase
       .from("company_subscriptions")
-      .update({ subscription_status: "expired" })
+      .update({ status: "expired" })
       .in(
         "id",
         endedTrials.map((s) => s.id),
@@ -103,7 +100,7 @@ export async function transitionTrialsToActive(): Promise<number> {
     // Log audit changes
     for (const trial of endedTrials) {
       await logSubscriptionChange({
-        companyId: trial.id,
+        companyId: trial.company_id,
         action: "expired",
         newStatus: "expired",
       })
@@ -114,7 +111,7 @@ export async function transitionTrialsToActive(): Promise<number> {
 
   const { error: updateError } = await supabase
     .from("company_subscriptions")
-    .update({ subscription_status: "active" })
+    .update({ status: "active" })
     .in(
       "id",
       subsWithPayment.map((s) => s.id),
@@ -130,7 +127,7 @@ export async function transitionTrialsToActive(): Promise<number> {
   // Log audit changes
   for (const sub of subsWithPayment) {
     await logSubscriptionChange({
-      companyId: sub.id,
+      companyId: sub.company_id,
       action: "trial_ended",
       oldStatus: "trial",
       newStatus: "active",
@@ -152,19 +149,49 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
       `
       id,
       company_id,
-      subscription_status,
+      status,
       trial_end_date,
       end_date,
-      service_packages (package_name)
+      service_packages!inner (name)
     `,
     )
     .eq("company_id", companyId)
+    .eq("status", "active")
     .order("created_at", { ascending: false })
     .limit(1)
     .single()
 
   if (error || !data) {
-    return null
+    const { data: freeData, error: freeError } = await supabase
+      .from("company_subscriptions")
+      .select(
+        `
+        id,
+        company_id,
+        status,
+        trial_end_date,
+        end_date,
+        service_packages!inner (name)
+      `,
+      )
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (freeError || !freeData) {
+      return null
+    }
+
+    const freePkg = freeData.service_packages as any
+    return {
+      id: freeData.id,
+      companyId: freeData.company_id,
+      status: freeData.status as any,
+      trialEndDate: freeData.trial_end_date ? new Date(freeData.trial_end_date) : null,
+      endDate: new Date(freeData.end_date),
+      packageName: freePkg?.name || "Unknown",
+    }
   }
 
   const pkg = data.service_packages as any
@@ -172,10 +199,10 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
   return {
     id: data.id,
     companyId: data.company_id,
-    status: data.subscription_status as any,
+    status: data.status as any,
     trialEndDate: data.trial_end_date ? new Date(data.trial_end_date) : null,
     endDate: new Date(data.end_date),
-    packageName: pkg?.package_name || "Unknown",
+    packageName: pkg?.name || "Unknown",
   }
 }
 
@@ -184,7 +211,9 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
  */
 export async function hasActiveSubscription(companyId: string): Promise<boolean> {
   const status = await getSubscriptionStatus(companyId)
-  return status !== null && (status.status === "active" || status.status === "trial")
+  return (
+    status !== null && (status.status === "active" || status.status === "trial" || status.status === "free_default")
+  )
 }
 
 /**
@@ -197,15 +226,7 @@ export async function getDaysRemaining(companyId: string): Promise<number> {
     return 0
   }
 
-  const supabase = await createClient()
-  const { data: subscription } = await supabase
-    .from("company_subscriptions")
-    .select("service_packages(package_code)")
-    .eq("company_id", companyId)
-    .single()
-
-  const pkg = subscription?.service_packages as any
-  if (pkg?.package_code === "FREE") {
+  if (status.packageName === "Free") {
     return -1 // -1 means forever free, never expires
   }
 

@@ -120,9 +120,12 @@ export default async function LotsPage({
                           <p className="font-medium">{new Date(lot.production_date).toLocaleDateString("vi-VN")}</p>
                         </div>
                         <div>
-                          <p className="text-slate-500">Số lượng</p>
+                          <p className="text-slate-500">Tồn kho khả dụng</p>
                           <p className="font-medium">
-                            {lot.quantity} {lot.unit}
+                            {lot.available_quantity !== null && lot.available_quantity !== undefined
+                              ? lot.available_quantity
+                              : lot.quantity}{" "}
+                            {lot.unit}
                           </p>
                         </div>
                       </div>

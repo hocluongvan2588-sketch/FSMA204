@@ -5,8 +5,22 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Users, Shield, Activity, RefreshCw, Building2, Package } from "lucide-react"
+import {
+  Users,
+  Shield,
+  Activity,
+  RefreshCw,
+  Building2,
+  PackageIcon,
+  Warehouse,
+  Tags,
+  FileText,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { useLanguage } from "@/contexts/language-context"
 
 interface AdminStats {
@@ -17,6 +31,7 @@ interface AdminStats {
   adminCount: number
   totalCompanies?: number
   totalPackages?: number
+  recentUsers?: any[]
 }
 
 interface UserProfile {
@@ -34,12 +49,71 @@ interface ProfileData {
   } | null
 }
 
+interface FacilityDashboardStats {
+  // Core metrics
+  totalFacilities: number
+  totalProducts: number
+  totalTLCs: number
+  totalCTEs: number
+
+  // FSMA 204 Compliance metrics
+  activeTLCs: number
+  expiredTLCs: number
+  tlcsWithCompleteCTEs: number
+  tlcsWithMissingKDEs: number
+  complianceScore: number
+
+  // FDA Registration metrics
+  fdaRegisteredFacilities: number
+  fdaRegistrationsExpiring: number
+  usAgentsActive: number
+  usAgentsExpiring: number
+
+  // Operational metrics
+  operatorsCount: number
+  managersCount: number
+  recentAlertsCount: number
+  storageUsagePercent: number
+  currentStorageGB: number
+  maxStorageGB: number
+}
+
+interface RecentActivity {
+  id: string
+  type: "tlc" | "cte" | "alert" | "fda"
+  title: string
+  description: string
+  timestamp: string
+  status: "success" | "warning" | "error"
+  icon: any
+}
+
 export default function AdminDashboard() {
   const { locale, t } = useLanguage()
   const router = useRouter()
-  const [profile, setProfile] = useState<ProfileData | null>(null)
-  const [stats, setStats] = useState<AdminStats | null>(null)
-  const [recentUsers, setRecentUsers] = useState<UserProfile[]>([])
+  const [profile, setProfile] = useState<any>(null)
+  const [stats, setStats] = useState<FacilityDashboardStats>({
+    totalFacilities: 0,
+    totalProducts: 0,
+    totalTLCs: 0,
+    totalCTEs: 0,
+    activeTLCs: 0,
+    expiredTLCs: 0,
+    tlcsWithCompleteCTEs: 0,
+    tlcsWithMissingKDEs: 0,
+    complianceScore: 0,
+    fdaRegisteredFacilities: 0,
+    fdaRegistrationsExpiring: 0,
+    usAgentsActive: 0,
+    usAgentsExpiring: 0,
+    operatorsCount: 0,
+    managersCount: 0,
+    recentAlertsCount: 0,
+    storageUsagePercent: 0,
+    currentStorageGB: 0,
+    maxStorageGB: 0,
+  })
+  const [recentActivity, setRecentActivity] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -54,9 +128,11 @@ export default function AdminDashboard() {
 
       const {
         data: { user },
+        error: authError,
       } = await supabase.auth.getUser()
 
-      if (!user) {
+      if (authError || !user) {
+        console.error("[v0] Auth error:", authError)
         router.push("/auth/login")
         return
       }
@@ -74,50 +150,205 @@ export default function AdminDashboard() {
       }
 
       if (profileData) {
-        setProfile(profileData as ProfileData)
+        setProfile(profileData)
 
         const isSystemAdminUser = profileData.role === "system_admin"
 
         if (isSystemAdminUser) {
-          const [{ count: totalUsers }, { count: totalCompanies }, { count: totalPackages }, { data: allUsers }] =
-            await Promise.all([
-              supabase.from("profiles").select("*", { count: "exact", head: true }),
-              supabase.from("companies").select("*", { count: "exact", head: true }),
-              supabase.from("service_packages").select("*", { count: "exact", head: true }),
-              supabase
-                .from("profiles")
-                .select("id, full_name, role, created_at")
-                .order("created_at", { ascending: false })
-                .limit(5),
-            ])
+          const response = await fetch("/api/admin/stats")
+          if (!response.ok) {
+            throw new Error("Failed to fetch admin stats")
+          }
+          const adminStats = await response.json()
 
           setStats({
-            totalUsers: totalUsers || 0,
-            adminCount: 0,
-            totalSystemLogs: 0,
-            totalFacilities: 0,
-            totalProducts: 0,
-            totalCompanies: totalCompanies || 0,
-            totalPackages: totalPackages || 0,
+            totalUsers: adminStats.totalUsers || 0,
+            totalCompanies: adminStats.totalCompanies || 0,
+            totalFacilities: adminStats.totalFacilities || 0,
+            totalProducts: adminStats.totalProducts || 0,
+            totalTLCs: adminStats.totalTLCs || 0,
+            totalCTEs: 0,
+            activeTLCs: 0,
+            expiredTLCs: 0,
+            tlcsWithCompleteCTEs: 0,
+            tlcsWithMissingKDEs: 0,
+            complianceScore: 85,
+            fdaRegisteredFacilities: 0,
+            fdaRegistrationsExpiring: 0,
+            usAgentsActive: 0,
+            usAgentsExpiring: 0,
+            operatorsCount: 0,
+            managersCount: 0,
+            recentAlertsCount: 0,
+            storageUsagePercent: 0,
+            currentStorageGB: 0,
+            maxStorageGB: 0,
           })
-          setRecentUsers(allUsers || [])
         } else {
-          // For company admins, use existing API
-          const response = await fetch("/api/admin/stats", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
+          const companyId = profileData.company_id
+
+          if (!companyId) {
+            console.error("[v0] No company_id found for user")
+            setIsLoading(false)
+            return
+          }
+
+          const results = await Promise.allSettled([
+            supabase.from("facilities").select("*", { count: "exact", head: true }).eq("company_id", companyId),
+            supabase.from("products").select("*", { count: "exact", head: true }).eq("company_id", companyId),
+            supabase
+              .from("traceability_lots")
+              .select("id, status, expiry_date, facility_id")
+              .eq("company_id", companyId)
+              .is("deleted_at", null),
+            supabase
+              .from("critical_tracking_events")
+              .select("*", { count: "exact", head: true })
+              .eq("company_id", companyId),
+            supabase.from("company_storage_summary").select("*").eq("company_id", companyId).single(),
+            supabase
+              .from("fda_registrations")
+              .select("*, facilities!inner(company_id)")
+              .eq("facilities.company_id", companyId),
+            supabase.from("us_agents").select("*").eq("company_id", companyId),
+            supabase
+              .from("profiles")
+              .select("*", { count: "exact", head: true })
+              .eq("company_id", companyId)
+              .eq("role", "operator"),
+            supabase
+              .from("profiles")
+              .select("*", { count: "exact", head: true })
+              .eq("company_id", companyId)
+              .eq("role", "manager"),
+            supabase
+              .from("data_quality_alerts")
+              .select("*")
+              .eq("status", "open")
+              .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+          ])
+
+          const [
+            facilitiesResult,
+            productsResult,
+            tlcResult,
+            ctesResult,
+            storageResult,
+            fdaRegsResult,
+            usAgentsResult,
+            operatorsResult,
+            managersResult,
+            alertsResult,
+          ] = results
+
+          const tlcData = tlcResult.status === "fulfilled" ? tlcResult.value.data : []
+          const fdaRegs = fdaRegsResult.status === "fulfilled" ? fdaRegsResult.value.data : []
+          const usAgents = usAgentsResult.status === "fulfilled" ? usAgentsResult.value.data : []
+          const alerts = alertsResult.status === "fulfilled" ? alertsResult.value.data : []
+          const storageData = storageResult.status === "fulfilled" ? storageResult.value.data : null
+
+          const now = new Date()
+          const activeTLCs = tlcData?.filter((tlc: any) => tlc.status === "active").length || 0
+          const expiredTLCs =
+            tlcData?.filter((tlc: any) => tlc.expiry_date && new Date(tlc.expiry_date) < now).length || 0
+
+          const fdaRegistered = fdaRegs?.filter((reg: any) => reg.status === "active").length || 0
+          const fdaExpiring =
+            fdaRegs?.filter(
+              (reg: any) =>
+                reg.expiry_date && new Date(reg.expiry_date) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+            ).length || 0
+
+          const usAgentsActive = usAgents?.filter((agent: any) => agent.status === "active").length || 0
+          const usAgentsExpiring =
+            usAgents?.filter(
+              (agent: any) =>
+                agent.expiry_date && new Date(agent.expiry_date) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+            ).length || 0
+
+          let complianceScore = 0
+          try {
+            const { data: complianceData, error: complianceError } = await supabase.rpc(
+              "calculate_realtime_compliance_score",
+              {
+                company_id_param: companyId,
+              },
+            )
+
+            if (complianceError) {
+              console.error("[v0] Compliance score RPC error:", complianceError)
+            } else if (complianceData && complianceData.length > 0) {
+              complianceScore = Math.round(complianceData[0].compliance_percentage)
+              console.log(
+                "[v0] Compliance score from RPC:",
+                complianceScore,
+                "org_type:",
+                complianceData[0].organization_type,
+              )
+            }
+          } catch (err) {
+            console.error("[v0] Failed to calculate compliance score:", err)
+          }
+
+          setStats({
+            totalFacilities:
+              facilitiesResult.status === "fulfilled" && facilitiesResult.value.count
+                ? facilitiesResult.value.count
+                : 0,
+            totalProducts:
+              productsResult.status === "fulfilled" && productsResult.value.count ? productsResult.value.count : 0,
+            totalTLCs: tlcData?.length || 0,
+            totalCTEs: ctesResult.status === "fulfilled" && ctesResult.value.count ? ctesResult.value.count : 0,
+            activeTLCs,
+            expiredTLCs,
+            tlcsWithCompleteCTEs: 0,
+            tlcsWithMissingKDEs: 0,
+            complianceScore,
+            fdaRegisteredFacilities: fdaRegistered,
+            fdaRegistrationsExpiring: fdaExpiring,
+            usAgentsActive,
+            usAgentsExpiring,
+            operatorsCount:
+              operatorsResult.status === "fulfilled" && operatorsResult.value.count ? operatorsResult.value.count : 0,
+            managersCount:
+              managersResult.status === "fulfilled" && managersResult.value.count ? managersResult.value.count : 0,
+            recentAlertsCount: alerts?.length || 0,
+            storageUsagePercent: storageData?.usage_percentage || 0,
+            currentStorageGB: storageData?.current_storage_gb || 0,
+            maxStorageGB: storageData?.max_storage_gb || 0,
           })
 
-          if (response.ok) {
-            const statsData = await response.json()
-            setStats(statsData.stats)
-            setRecentUsers(statsData.recentUsers || [])
+          const { data: recentLogs, error: logsError } = await supabase
+            .from("system_logs")
+            .select(`
+              *,
+              profiles!system_logs_user_id_fkey(company_id)
+            `)
+            .order("created_at", { ascending: false })
+            .limit(20)
+
+          // Filter logs by company on client side since system_logs doesn't have company_id column
+          const companyLogs = recentLogs?.filter((log) => log.profiles?.company_id === companyId).slice(0, 5) || []
+
+          if (logsError) {
+            console.error("[v0] System logs fetch error:", logsError)
           }
+
+          setRecentActivity(
+            companyLogs.map((log) => ({
+              id: log.id,
+              type: log.entity_type === "traceability_lots" ? "tlc" : "cte",
+              title: log.action,
+              description: log.description || "",
+              timestamp: log.created_at,
+              status: log.action.includes("delete") ? "error" : "success",
+              icon: log.entity_type === "traceability_lots" ? Tags : FileText,
+            })),
+          )
         }
       }
     } catch (error) {
-      console.error("[v0] Load data error:", error)
+      console.error("[v0] Error loading dashboard data:", error)
     } finally {
       setIsLoading(false)
     }
@@ -134,11 +365,24 @@ export default function AdminDashboard() {
     return colors[role] || colors.viewer
   }
 
+  const getComplianceColor = (score: number) => {
+    if (score >= 90) return "text-green-600"
+    if (score >= 70) return "text-yellow-600"
+    return "text-red-600"
+  }
+
+  const getComplianceMessage = (score: number) => {
+    if (score >= 90) return "Tốt - Tuân thủ đầy đủ"
+    if (score >= 70) return "Trung bình - Cần cải thiện"
+    return "Thấp - Cần hành động khẩn"
+  }
+
   if (isLoading) {
     return (
       <div className="p-8 space-y-6">
         <Skeleton className="h-12 w-1/3" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Skeleton className="h-32" />
           <Skeleton className="h-32" />
           <Skeleton className="h-32" />
           <Skeleton className="h-32" />
@@ -197,96 +441,365 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {isSystemAdmin ? (
-          <>
+      {!isSystemAdmin && stats && (
+        <>
+          <Card className="border-2 border-primary">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                Tổng quan Tuân thủ FSMA 204
+              </CardTitle>
+              <CardDescription>Đánh giá tình trạng tuân thủ quy định FDA cho cơ sở của bạn</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Điểm Tuân thủ</p>
+                    <p className={`text-4xl font-bold ${getComplianceColor(stats.complianceScore)}`}>
+                      {stats.complianceScore}%
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">{getComplianceMessage(stats.complianceScore)}</p>
+                  </div>
+                  <div className="text-right space-y-2">
+                    {stats.fdaRegistrationsExpiring > 0 && (
+                      <Badge variant="destructive" className="gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {stats.fdaRegistrationsExpiring} FDA sắp hết hạn
+                      </Badge>
+                    )}
+                    {stats.usAgentsExpiring > 0 && (
+                      <Badge variant="destructive" className="gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {stats.usAgentsExpiring} US Agent sắp hết hạn
+                      </Badge>
+                    )}
+                    {stats.recentAlertsCount > 0 && (
+                      <Badge variant="destructive" className="gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {stats.recentAlertsCount} cảnh báo mới
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <Progress value={stats.complianceScore} className="h-3" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => router.push("/admin/users")}
+              onClick={() => router.push("/dashboard/facilities")}
             >
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                <Users className="h-5 w-5 text-blue-600" />
+                <CardTitle className="text-sm font-medium">Cơ sở</CardTitle>
+                <Warehouse className="h-5 w-5 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{stats?.totalUsers || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">Tất cả users trong hệ thống</p>
+                <div className="text-3xl font-bold">{stats.totalFacilities}</div>
+                <div className="flex items-center gap-2 mt-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <p className="text-xs text-muted-foreground">{stats.fdaRegisteredFacilities} đã đăng ký FDA</p>
+                </div>
               </CardContent>
             </Card>
 
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => router.push("/admin/companies")}
+              onClick={() => router.push("/dashboard/products")}
             >
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Companies</CardTitle>
-                <Building2 className="h-5 w-5 text-green-600" />
+                <CardTitle className="text-sm font-medium">Sản phẩm FTL</CardTitle>
+                <PackageIcon className="h-5 w-5 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{stats?.totalCompanies || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">Công ty đang hoạt động</p>
+                <div className="text-3xl font-bold">{stats.totalProducts}</div>
+                <p className="text-xs text-muted-foreground mt-2">Sản phẩm cần truy xuất nguồn gốc</p>
               </CardContent>
             </Card>
 
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => router.push("/admin/service-packages")}
+              onClick={() => router.push("/dashboard/traceability")}
             >
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Service Packages</CardTitle>
-                <Package className="h-5 w-5 text-purple-600" />
+                <CardTitle className="text-sm font-medium">Mã TLC</CardTitle>
+                <Tags className="h-5 w-5 text-purple-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{stats?.totalPackages || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">Gói dịch vụ có sẵn</p>
+                <div className="text-3xl font-bold">{stats.totalTLCs}</div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-green-600 font-medium">{stats.activeTLCs} hoạt động</span>
+                  {stats.expiredTLCs > 0 && (
+                    <span className="text-xs text-red-600 font-medium">{stats.expiredTLCs} hết hạn</span>
+                  )}
+                </div>
               </CardContent>
             </Card>
-          </>
-        ) : (
-          <>
+
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => router.push("/dashboard/ctes")}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Sự kiện CTE</CardTitle>
+                <FileText className="h-5 w-5 text-orange-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{stats.totalCTEs}</div>
+                <p className="text-xs text-muted-foreground mt-2">Critical Tracking Events</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">{t("admin.overview.stats.totalUsers")}</CardTitle>
-                <Users className="h-5 w-5 text-blue-600" />
+                <CardTitle className="text-sm font-medium">Đăng ký FDA</CardTitle>
+                <Shield className="h-5 w-5 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{stats?.totalUsers || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">{t("admin.overview.stats.accountsInSystem")}</p>
-                <Button variant="link" className="px-0 mt-2" onClick={() => router.push("/admin/users")}>
-                  {t("common.actions.viewDetails")} →
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Đã đăng ký:</span>
+                    <span className="font-medium">
+                      {stats.fdaRegisteredFacilities}/{stats.totalFacilities}
+                    </span>
+                  </div>
+                  {stats.fdaRegistrationsExpiring > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-red-600">Sắp hết hạn:</span>
+                      <Badge variant="destructive">{stats.fdaRegistrationsExpiring}</Badge>
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-2 bg-transparent"
+                    onClick={() => router.push("/admin/fda-registrations")}
+                  >
+                    Quản lý FDA →
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">US Agent</CardTitle>
+                <Users className="h-5 w-5 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Hoạt động:</span>
+                    <span className="font-medium">{stats.usAgentsActive}</span>
+                  </div>
+                  {stats.usAgentsExpiring > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-red-600">Sắp hết hạn:</span>
+                      <Badge variant="destructive">{stats.usAgentsExpiring}</Badge>
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-2 bg-transparent"
+                    onClick={() => router.push("/admin/us-agents")}
+                  >
+                    Quản lý US Agent →
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Đội ngũ</CardTitle>
+                <Users className="h-5 w-5 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Operators:</span>
+                    <span className="font-medium">{stats.operatorsCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Managers:</span>
+                    <span className="font-medium">{stats.managersCount}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-2 bg-transparent"
+                    onClick={() => router.push("/admin/users")}
+                  >
+                    Quản lý Users →
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-blue-600" />
+                  Dung lượng Lưu trữ
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Đã sử dụng:</span>
+                    <span className="font-medium">
+                      {stats.currentStorageGB.toFixed(2)} / {stats.maxStorageGB} GB
+                    </span>
+                  </div>
+                  <Progress value={stats.storageUsagePercent} className="h-2" />
+                  <p className="text-xs text-muted-foreground">
+                    {stats.storageUsagePercent >= 90 ? (
+                      <span className="text-red-600 font-medium">Cảnh báo: Gần đầy dung lượng!</span>
+                    ) : stats.storageUsagePercent >= 75 ? (
+                      <span className="text-yellow-600 font-medium">Lưu ý: Đã dùng hơn 75%</span>
+                    ) : (
+                      <span className="text-green-600">Dung lượng còn thoải mái</span>
+                    )}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-orange-600" />
+                  Cảnh báo Gần đây
+                </CardTitle>
+                <CardDescription>Cảnh báo chất lượng dữ liệu trong 7 ngày qua</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {stats.recentAlertsCount === 0 ? (
+                  <div className="text-center py-4">
+                    <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Không có cảnh báo mới</p>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-3xl font-bold text-red-600">{stats.recentAlertsCount}</div>
+                    <p className="text-sm text-muted-foreground mt-1">Cảnh báo cần xử lý</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-3 bg-transparent"
+                      onClick={() => router.push("/dashboard/alerts")}
+                    >
+                      Xem chi tiết →
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {recentActivity.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-gray-600" />
+                  Hoạt động Gần đây
+                </CardTitle>
+                <CardDescription>Các thay đổi quan trọng trong hệ thống FSMA 204</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {recentActivity.map((activity) => {
+                    const Icon = activity.icon
+                    return (
+                      <div key={activity.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                        <Icon className="h-5 w-5 text-muted-foreground mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{activity.title}</p>
+                          <p className="text-xs text-muted-foreground truncate">{activity.description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(activity.timestamp).toLocaleString(locale)}
+                          </p>
+                        </div>
+                        <Badge
+                          variant={
+                            activity.status === "success"
+                              ? "default"
+                              : activity.status === "warning"
+                                ? "secondary"
+                                : "destructive"
+                          }
+                        >
+                          {activity.status}
+                        </Badge>
+                      </div>
+                    )
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full mt-4 bg-transparent"
+                  onClick={() => router.push("/admin/system-logs")}
+                >
+                  Xem tất cả hoạt động →
                 </Button>
               </CardContent>
             </Card>
+          )}
+        </>
+      )}
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">{t("admin.overview.stats.administrators")}</CardTitle>
-                <Shield className="h-5 w-5 text-purple-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{stats?.adminCount || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t("admin.overview.stats.systemAdminCount", { count: 0 })}
-                </p>
-              </CardContent>
-            </Card>
+      {isSystemAdmin && stats && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card
+            className="hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => router.push("/admin/users")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+              <Users className="h-5 w-5 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.totalUsers || 0}</div>
+              <p className="text-xs text-muted-foreground mt-1">Tất cả users trong hệ thống</p>
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">{t("admin.systemLogs.title")}</CardTitle>
-                <Activity className="h-5 w-5 text-orange-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{stats?.totalSystemLogs || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">{t("admin.systemLogs.recordedEvents")}</p>
-                <Button variant="link" className="px-0 mt-2" onClick={() => router.push("/admin/system-logs")}>
-                  {t("common.actions.viewDetails")} →
-                </Button>
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </div>
+          <Card
+            className="hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => router.push("/admin/companies")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Companies</CardTitle>
+              <Building2 className="h-5 w-5 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.totalCompanies || 0}</div>
+              <p className="text-xs text-muted-foreground mt-1">Công ty đang hoạt động</p>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => router.push("/admin/service-packages")}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Facilities</CardTitle>
+              <Warehouse className="h-5 w-5 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.totalFacilities || 0}</div>
+              <p className="text-xs text-muted-foreground mt-1">Tổng số cơ sở toàn hệ thống</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -296,14 +809,14 @@ export default function AdminDashboard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {recentUsers.length === 0 ? (
+          {stats?.recentUsers?.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">{t("admin.users.noUsers")}</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {recentUsers.map((user) => (
+              {stats?.recentUsers?.map((user) => (
                 <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <p className="font-medium">{user.full_name}</p>

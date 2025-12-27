@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { CTECorrectionDialog } from "@/components/cte-correction-dialog"
+import { Ban, Lock, AlertTriangle } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
-export default async function CTEDetailPage({ params }: { params: { id: string } }) {
+export default async function CTEDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
   const { id } = await params
 
@@ -35,7 +38,7 @@ export default async function CTEDetailPage({ params }: { params: { id: string }
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 capitalize">
+          <h1 className="text-3xl font-bold text-slate-900 capitalize flex items-center gap-3">
             {cte.event_type === "harvest"
               ? "Thu hoạch"
               : cte.event_type === "cooling"
@@ -47,13 +50,46 @@ export default async function CTEDetailPage({ params }: { params: { id: string }
                     : cte.event_type === "transformation"
                       ? "Chế biến"
                       : "Vận chuyển"}
+            {cte.status === "submitted" && <Lock className="h-5 w-5 text-emerald-600" title="Read-only (submitted)" />}
+            {cte.status === "corrected" && <Ban className="h-5 w-5 text-amber-600" title="Corrected" />}
           </h1>
           <p className="text-slate-500 mt-1">{new Date(cte.event_date).toLocaleString("vi-VN")}</p>
         </div>
-        <Badge variant="default" className="capitalize">
-          {cte.event_type}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant={cte.status === "draft" ? "secondary" : cte.status === "corrected" ? "outline" : "default"}
+            className="capitalize"
+          >
+            {cte.status === "draft" ? "Nháp" : cte.status === "corrected" ? "Đã điều chỉnh" : "Đã submit"}
+          </Badge>
+          {cte.is_correction && (
+            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+              Correction Event
+            </Badge>
+          )}
+        </div>
       </div>
+
+      {cte.status === "corrected" && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            Sự kiện này đã được điều chỉnh. Dữ liệu được giữ lại cho audit trail.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {cte.is_correction && cte.corrects_cte_id && (
+        <Alert className="bg-blue-50 border-blue-200">
+          <AlertDescription className="text-blue-800">
+            Đây là correction event cho{" "}
+            <Link href={`/dashboard/cte/${cte.corrects_cte_id}`} className="underline font-medium">
+              sự kiện gốc
+            </Link>
+            . Lý do: {cte.correction_reason}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -191,6 +227,21 @@ export default async function CTEDetailPage({ params }: { params: { id: string }
         <Button asChild variant="outline" className="bg-transparent">
           <Link href={`/dashboard/lots/${cte.tlc_id}`}>Xem lô hàng</Link>
         </Button>
+        {cte.status === "submitted" && (
+          <CTECorrectionDialog
+            cteId={cte.id}
+            currentData={{
+              event_type: cte.event_type,
+              event_date: cte.event_date,
+              responsible_person: cte.responsible_person,
+              quantity_processed: cte.quantity_processed,
+              unit: cte.unit,
+              temperature: cte.temperature,
+              description: cte.description,
+            }}
+            onSuccess={() => window.location.reload()}
+          />
+        )}
       </div>
     </div>
   )

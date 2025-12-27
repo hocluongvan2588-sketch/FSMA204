@@ -27,8 +27,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
+    console.log("[v0] Fetching subscription status for company:", companyId)
+
     const status = await getSubscriptionStatus(companyId)
+    console.log("[v0] Subscription status result:", status)
+
     const daysRemaining = await getDaysRemaining(companyId)
+    console.log("[v0] Days remaining result:", daysRemaining)
 
     return NextResponse.json({
       status: status?.status || "none",

@@ -18,7 +18,7 @@ export default async function PricingPage() {
     .from("service_packages")
     .select("*")
     .eq("is_active", true)
-    .order("sort_order", { ascending: true })
+    .order("display_order", { ascending: true })
 
   const getIcon = (code: string) => {
     switch (code) {
@@ -107,7 +107,7 @@ export default async function PricingPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       <div className="container mx-auto px-4 pt-6">
         <Button asChild variant="ghost" className="mb-4">
-          <Link href="/">
+          <Link href="/admin/my-subscription">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Quay lại
           </Link>
@@ -219,7 +219,7 @@ export default async function PricingPage() {
                     </Button>
                   ) : (
                     <Button asChild className={pkg.is_featured ? "w-full bg-blue-600 hover:bg-blue-700" : "w-full"}>
-                      <Link href="/auth/signup?redirect=/admin/my-subscription">Dùng thử 30 ngày</Link>
+                      <Link href="/auth/signup">Dùng thử 30 ngày</Link>
                     </Button>
                   )}
                 </CardFooter>
@@ -282,7 +282,7 @@ export default async function PricingPage() {
             Hạn chót FSMA 204: <strong>20/01/2026</strong>. Chỉ còn 12 tháng!
           </p>
           <Button asChild size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-slate-100">
-            <Link href="/auth/signup?redirect=/admin/my-subscription">Bắt đầu dùng thử 30 ngày miễn phí</Link>
+            <Link href="/auth/signup">Bắt đầu dùng thử 30 ngày miễn phí</Link>
           </Button>
         </div>
       </div>

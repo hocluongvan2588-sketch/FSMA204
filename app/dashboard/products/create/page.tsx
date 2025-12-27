@@ -45,7 +45,16 @@ export default function CreateProductPage() {
     setIsLoading(true)
     setError(null)
 
-    const formData = new FormData(e.currentTarget)
+    let formData: FormData
+    try {
+      formData = new FormData(e.currentTarget)
+    } catch (err) {
+      console.error("[v0] FormData construction error:", err)
+      setError("Lỗi khi xử lý form. Vui lòng thử lại.")
+      setIsLoading(false)
+      return
+    }
+
     const input = {
       product_code: formData.get("product_code") as string,
       product_name: formData.get("product_name") as string,

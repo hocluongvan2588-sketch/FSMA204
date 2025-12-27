@@ -21,7 +21,7 @@ export default async function DashboardPage() {
   // Check user role and redirect if needed
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*, companies(name, registration_number)")
+    .select("*, companies(name, registration_number, organization_type)")
     .eq("id", user.id)
     .single()
 
@@ -34,6 +34,10 @@ export default async function DashboardPage() {
   if (profile?.role === "viewer") {
     redirect("/dashboard/viewer")
   }
+
+  const { data: complianceData } = await supabase.rpc("calculate_realtime_compliance_score", {
+    company_id_param: profile?.company_id,
+  })
 
   // Fetch all dashboard data server-side
   const [facilities, products, lots, shipments, registrations, kdeStatsResult, activities] = await Promise.all([
@@ -71,6 +75,8 @@ export default async function DashboardPage() {
     productsCount: products.count || 0,
     lotsCount: lots.count || 0,
     shipmentsCount: shipments.count || 0,
+    complianceScore: complianceData?.[0]?.compliance_percentage || 0,
+    deductionReasons: complianceData?.[0]?.deduction_reasons || [],
     fdaRegistrations: (registrations.data || []).map((reg: any) => ({
       id: reg.id,
       facility_name: reg.facilities?.name || "Unknown Facility",
@@ -91,6 +97,7 @@ export default async function DashboardPage() {
       email: user.email,
       full_name: profile?.full_name || user.email,
       company_id: profile?.company_id,
+      organization_type: profile?.companies?.organization_type,
       companies: profile?.companies,
     },
   }

@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button"
 import { QuickActions } from "@/components/quick-actions"
 import { Package, Building2, Tag, Truck, TrendingUp, TrendingDown } from "lucide-react"
 import { FDATimelineChart } from "@/components/fda-timeline-chart"
-import { RealtimeComplianceWidget } from "@/components/realtime-compliance-widget"
+import { MissingKDEDetailDialog } from "@/components/missing-kde-detail-dialog"
 import { DailyGreeting } from "@/components/daily-greeting"
 import { FSMATour } from "@/components/fsma-tour"
-import { MissingKDEDetailDialog } from "@/components/missing-kde-detail-dialog"
+import { RealtimeComplianceWidget } from "@/components/realtime-compliance-widget"
 import { useState } from "react"
 
 interface DashboardClientProps {
@@ -19,6 +19,8 @@ interface DashboardClientProps {
     productsCount: number
     lotsCount: number
     shipmentsCount: number
+    complianceScore: number
+    deductionReasons: any[]
     fdaRegistrations: any[]
     totalLots: number
     lotsWithKDE: number
@@ -28,6 +30,7 @@ interface DashboardClientProps {
       email: string
       full_name: string
       company_id?: string
+      organization_type?: string
       companies?: any
     }
   }
@@ -36,8 +39,19 @@ interface DashboardClientProps {
 export function DashboardClient({ initialData }: DashboardClientProps) {
   const [selectedCTE, setSelectedCTE] = useState<{ id: string; eventType: string } | null>(null)
 
-  const { facilitiesCount, productsCount, lotsCount, shipmentsCount, fdaRegistrations, recentActivities, user } =
-    initialData
+  const {
+    facilitiesCount,
+    productsCount,
+    lotsCount,
+    shipmentsCount,
+    fdaRegistrations,
+    recentActivities,
+    user,
+    complianceScore,
+    deductionReasons,
+  } = initialData
+
+  const organizationType = user.organization_type
 
   const kpiData = [
     {
@@ -82,12 +96,19 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
     },
   ]
 
+  const complianceScoreData = {
+    compliance_percentage: complianceScore,
+    organization_type: organizationType || "generic",
+    total_ctes: 0,
+    compliant_ctes: 0,
+    deduction_reasons: deductionReasons,
+  }
+
   return (
     <div className="space-y-8 pb-8">
       <div data-tour="daily-greeting">
         <DailyGreeting userName={user.full_name} autoRotate={true} rotateInterval={30000} />
       </div>
-
       <div data-tour="kpi-cards">
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {kpiData.map((kpi) => {
@@ -125,17 +146,18 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           })}
         </div>
       </div>
-
       <div data-tour="quick-actions-section">
         <h2 className="text-2xl font-bold text-foreground mb-4">Thao tác nhanh</h2>
         <QuickActions />
       </div>
-
       <div className="grid gap-6 lg:grid-cols-2">
-        <FDATimelineChart registrations={fdaRegistrations} />
-        {user.company_id && <RealtimeComplianceWidget companyId={user.company_id} refreshInterval={30000} />}
+        {organizationType !== "Farm" && <FDATimelineChart registrations={fdaRegistrations} />}
+        <RealtimeComplianceWidget
+          companyId={user.company_id}
+          initialScore={complianceScoreData}
+          refreshInterval={60000}
+        />
       </div>
-
       <Card className="rounded-3xl shadow-lg shadow-slate-900/5">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
@@ -259,7 +281,6 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           )}
         </CardContent>
       </Card>
-
       {user.companies && (
         <Card className="rounded-3xl shadow-lg shadow-slate-900/5" data-tour="company-info">
           <CardHeader>
@@ -279,7 +300,6 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           </CardContent>
         </Card>
       )}
-
       {selectedCTE && (
         <MissingKDEDetailDialog
           cteId={selectedCTE.id}
@@ -288,8 +308,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           onOpenChange={(open) => !open && setSelectedCTE(null)}
         />
       )}
-
-      <FSMATour autoStart={true} />
+      <FSMATour autoStart={true} /> {/* Insert FSMATour component */}
     </div>
   )
 }

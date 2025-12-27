@@ -1,8 +1,13 @@
 "use client"
 
 import type React from "react"
-import { AlertCircle } from "lucide-react"
-
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertCircle, CheckCircle2 } from "lucide-react"
+import { TransformationInputSelector } from "@/components/transformation-input-selector"
+import { canCreateTransformation } from "@/lib/utils/fsma-204-validation"
+import { checkChronologicalValidity } from "@/lib/utils/chronological-validator"
+import { canCreateCTE } from "@/lib/utils/cte-permissions"
+import type { CTEType } from "@/lib/utils/cte-permissions"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,8 +18,30 @@ import { Textarea } from "@/components/ui/textarea"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useEffect } from "react"
 import { getAllowedCTETypes } from "@/lib/utils/cte-permissions"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Info } from "lucide-react"
+import { getActualEventType } from "@/lib/utils/cte-permissions"
+import type { OrganizationType } from "@/lib/utils/cte-permissions"
+import { calculateCurrentStock } from "@/lib/utils/calculate-current-stock"
+import { convertToBaseUnit } from "@/lib/utils/unit-converter"
+import { useToast } from "@/hooks/use-toast"
+
+interface ChronologicalCheckResult {
+  valid: boolean
+  error?: string
+  guidance?: string
+  last_event_type?: string
+  last_event_type_vi?: string
+  last_event_date?: string
+  last_event_date_formatted?: string
+  attempted_event_type_vi?: string
+  attempted_event_date_formatted?: string
+  time_difference_seconds?: number
+  time_difference_human?: string
+  time_since_last_event_seconds?: number
+  time_since_last_event_human?: string
+  severity?: string
+  first_event?: boolean
+  message?: string
+}
 
 export default function CreateCTEPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -31,9 +58,22 @@ export default function CreateCTEPage() {
   const [sequenceValidation, setSequenceValidation] = useState<any>(null)
   const [canSubmit, setCanSubmit] = useState(true)
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [transformationInputs, setTransformationInputs] = useState<
+    Array<{ tlc_id: string; tlc_code: string; quantity_used: number }>
+  >([])
+  const [transformationErrors, setTransformationErrors] = useState<string[]>([])
+  const [chronologicalCheck, setChronologicalCheck] = useState<ChronologicalCheckResult | null>(null)
+  const [quantityError, setQuantityError] = useState<string | null>(null)
+  const [quantityInBaseUnit, setQuantityInBaseUnit] = useState<number | null>(null)
+  const [unitInfo, setUnitInfo] = useState<string | null>(null)
+  const [availableStock, setAvailableStock] = useState<number | null>(null)
+  const [stockFetched, setStockFetched] = useState<boolean>(false)
+  const [stockLoading, setStockLoading] = useState<boolean>(false)
+  const [chronologicalError, setChronologicalError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
+  const { toast } = useToast()
 
   useEffect(() => {
     const fetchData = async () => {
@@ -57,7 +97,7 @@ export default function CreateCTEPage() {
         .order("created_at", { ascending: false })
       setLots(lotsData || [])
 
-      const { data: facilitiesData } = await supabase.from("facilities").select("id, name, location_code").order("name")
+      const { data: facilitiesData } = await supabase.from("facilities").select("id, name").order("name")
       setFacilities(facilitiesData || [])
 
       const lotParam = searchParams.get("lot")
@@ -74,20 +114,69 @@ export default function CreateCTEPage() {
   }, [searchParams])
 
   useEffect(() => {
+    const calculateStock = async () => {
+      if (!selectedLot || lots.length === 0) {
+        setAvailableStock(null)
+        setStockFetched(false)
+        return
+      }
+
+      const lot = lots.find((l) => l.id === selectedLot)
+      if (!lot) {
+        setAvailableStock(null)
+        setStockFetched(false)
+        return
+      }
+
+      setStockLoading(true)
+      setStockFetched(true)
+      try {
+        const stock = await calculateCurrentStock(lot.tlc)
+        setAvailableStock(stock.current_stock)
+      } catch (err) {
+        console.error("Error calculating stock:", err)
+        setAvailableStock(null)
+      } finally {
+        setStockLoading(false)
+      }
+    }
+    calculateStock()
+  }, [selectedLot, lots])
+
+  useEffect(() => {
     const fetchKDERequirements = async () => {
-      if (!eventType) return
+      if (!eventType) {
+        setKdeFields([])
+        return
+      }
 
-      const { data, error } = await supabase.rpc("get_missing_kdes", {
-        p_event_type: eventType,
-        p_facility_id: selectedFacility || null,
-      })
+      try {
+        const supabase = createClient()
+        console.log("[v0] Fetching KDE requirements for event type:", eventType)
 
-      if (data && !error) {
-        setKdeFields(data)
-        // Check if all critical fields are filled
-        const criticalFields = data.filter((f: any) => f.is_critical)
-        const allCriticalFilled = criticalFields.every((f: any) => kdeValues[f.kde_key])
-        setCanSubmit(allCriticalFilled)
+        const { data, error } = await supabase.rpc("get_missing_kdes", {
+          p_event_type: eventType,
+          p_facility_id: selectedFacility || null,
+        })
+
+        console.log("[v0] KDE fetch result:", { data, error })
+
+        if (error) {
+          console.error("[v0] KDE fetch error:", error)
+          const fallbackKdes = getFallbackKdeRequirements(eventType)
+          console.log("[v0] Using fallback KDEs:", fallbackKdes)
+          setKdeFields(fallbackKdes)
+        } else if (data && data.length > 0) {
+          setKdeFields(data)
+        } else {
+          const fallbackKdes = getFallbackKdeRequirements(eventType)
+          console.log("[v0] No KDE data, using fallback:", fallbackKdes)
+          setKdeFields(fallbackKdes)
+        }
+      } catch (err) {
+        console.error("[v0] KDE fetch error:", err)
+        const fallbackKdes = getFallbackKdeRequirements(eventType)
+        setKdeFields(fallbackKdes)
       }
     }
 
@@ -99,15 +188,12 @@ export default function CreateCTEPage() {
       if (selectedFacility) {
         const { data: facility } = await supabase
           .from("facilities")
-          .select("location_code, gps_latitude, gps_longitude")
+          .select("location_code")
           .eq("id", selectedFacility)
           .single()
 
         if (facility?.location_code) {
-          setKdeValues((prev) => ({
-            ...prev,
-            location_code: facility.location_code,
-          }))
+          console.log("[v0] Facility location_code:", facility.location_code)
         }
       }
     }
@@ -119,21 +205,50 @@ export default function CreateCTEPage() {
     const validateSequence = async () => {
       if (!selectedLot || !eventType) return
 
-      const { data, error } = await supabase.rpc("check_tlc_sequence", {
-        p_tlc_id: selectedLot,
-        p_event_type: eventType,
-        p_event_date: new Date().toISOString(),
-      })
-
-      if (data) {
-        setSequenceValidation(data)
-        if (!data.valid && data.error_code === "SEQUENCE_ERROR") {
-          setCanSubmit(false)
-        }
+      try {
+        setSequenceValidation(null)
+      } catch (err) {
+        console.log("[v0] Sequence validation error:", err)
+        setSequenceValidation(null)
       }
     }
 
     validateSequence()
+  }, [selectedLot, eventType])
+
+  useEffect(() => {
+    if (eventType === "transformation") {
+      setTransformationInputs([])
+      setTransformationErrors([])
+    }
+  }, [eventType])
+
+  useEffect(() => {
+    const validateChronological = async () => {
+      if (!selectedLot || !eventType) {
+        setChronologicalCheck(null)
+        return
+      }
+
+      const eventDateInput = document.querySelector('input[name="event_date"]') as HTMLInputElement
+      if (!eventDateInput || !eventDateInput.value) return
+
+      const eventDate = new Date(eventDateInput.value)
+
+      const result = await checkChronologicalValidity(selectedLot, eventType, eventDate)
+
+      setChronologicalCheck(result)
+
+      if (!result.valid) {
+        setChronologicalError(result.error)
+        setCanSubmit(false)
+      } else {
+        setChronologicalError(null)
+      }
+    }
+
+    const timer = setTimeout(validateChronological, 500)
+    return () => clearTimeout(timer)
   }, [selectedLot, eventType])
 
   const getCurrentLocation = () => {
@@ -141,7 +256,6 @@ export default function CreateCTEPage() {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords
-          // Validate 4 decimal places
           const lat = Number(latitude.toFixed(4))
           const lon = Number(longitude.toFixed(4))
           setCurrentLocation({ latitude: lat, longitude: lon })
@@ -159,57 +273,211 @@ export default function CreateCTEPage() {
     }
   }
 
+  const handleTLCSelect = (tlcId: string) => {
+    setSelectedLot(tlcId)
+  }
+
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const quantity = e.target.value
+    const unit = (document.getElementById("unit") as HTMLInputElement)?.value || "kg"
+
+    if (!quantity || !unit) {
+      setQuantityError(null)
+      setQuantityInBaseUnit(null)
+      setUnitInfo(null)
+      return
+    }
+
+    try {
+      const inBaseUnit = convertToBaseUnit(Number.parseFloat(quantity), unit)
+      setQuantityInBaseUnit(inBaseUnit)
+      setUnitInfo(`= ${inBaseUnit.toFixed(2)} kg`)
+
+      if (availableStock !== null && inBaseUnit > availableStock) {
+        if (eventType === "cooling" || eventType === "packing" || eventType === "shipping") {
+          setQuantityError(
+            `❌ VƯỢT TỒN KHO! Bạn nhập ${inBaseUnit.toFixed(2)} kg nhưng chỉ có ${availableStock.toFixed(2)} kg khả dụng. Vui lòng giảm số lượng hoặc kiểm tra lại tồn kho.`,
+          )
+        } else {
+          setQuantityError(null)
+        }
+      } else {
+        setQuantityError(null)
+      }
+    } catch (error) {
+      setQuantityError(`❌ ${error instanceof Error ? error.message : "Đơn vị không hợp lệ"}`)
+      setQuantityInBaseUnit(null)
+      setUnitInfo(null)
+    }
+  }
+
+  const handleUnitChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const unit = e.target.value
+    const quantity = (document.getElementById("quantity_processed") as HTMLInputElement)?.value
+
+    if (quantity && unit) {
+      handleQuantityChange({ target: { value: quantity } } as React.ChangeEvent<HTMLInputElement>)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
 
-    const criticalFields = kdeFields.filter((f) => f.is_critical)
-    const missingCritical = criticalFields.filter((f) => !kdeValues[f.kde_key])
-
-    if (missingCritical.length > 0) {
-      setError(`Thiếu thông tin bắt buộc: ${missingCritical.map((f) => f.kde_label).join(", ")}`)
+    if (!e.currentTarget) {
+      setError("Form element is missing. Please try again.")
       setIsLoading(false)
       return
     }
 
-    const formData = new FormData(e.currentTarget)
-    const data = {
-      tlc_id: selectedLot,
-      event_type: eventType,
-      event_date: formData.get("event_date") as string,
-      facility_id: selectedFacility,
-      responsible_person: formData.get("responsible_person") as string,
-      description: formData.get("description") as string,
-      temperature: formData.get("temperature") ? Number.parseFloat(formData.get("temperature") as string) : null,
-      quantity_processed: formData.get("quantity_processed")
-        ? Number.parseFloat(formData.get("quantity_processed") as string)
-        : null,
-      unit: formData.get("unit") as string,
-      location_details: formData.get("location_details") as string,
+    let formData: FormData
+    try {
+      formData = new FormData(e.currentTarget)
+    } catch (err) {
+      console.error("[v0] FormData construction error:", err)
+      setError("Lỗi khi xử lý form. Vui lòng thử lại.")
+      setIsLoading(false)
+      return
     }
 
+    if ((eventType === "cooling" || eventType === "packing" || eventType === "shipping") && selectedLot) {
+      const lot = lots.find((l) => l.id === selectedLot)
+      if (lot) {
+        try {
+          const stockResult = await calculateCurrentStock(lot.tlc)
+          const processedQty = quantityInBaseUnit || 0
+
+          if (processedQty > stockResult.current_stock) {
+            setError(
+              `❌ THIẾU TỒN KHO: TLC ${lot.tlc}\n\n` +
+                `📦 Tồn kho khả dụng: ${stockResult.current_stock.toFixed(2)} kg\n` +
+                `   = Sản xuất (${stockResult.total_production.toFixed(2)}) + Tiếp nhận (${stockResult.total_receiving.toFixed(2)}) - Vận chuyển (${stockResult.total_shipping.toFixed(2)})\n\n` +
+                `📤 Yêu cầu ${eventType === "cooling" ? "làm lạnh" : eventType === "packing" ? "đóng gói" : "vận chuyển"}: ${processedQty.toFixed(2)} kg\n` +
+                `⚠️ Thiếu: ${(processedQty - stockResult.current_stock).toFixed(2)} kg\n\n` +
+                `Vui lòng giảm số lượng hoặc chờ thêm sự kiện nhập hàng.`,
+            )
+            setIsLoading(false)
+            return
+          }
+        } catch (err) {
+          console.error("[v0] Error calculating stock for validation:", err)
+          setError("Lỗi hệ thống khi kiểm tra tồn kho")
+          setIsLoading(false)
+          return
+        }
+      }
+    }
+
+    if (organizationType) {
+      const { canCreate, error: typeError } = canCreateCTE(organizationType, eventType as CTEType)
+      if (!canCreate) {
+        setError(
+          `❌ FSMA 204 VIOLATION: Tổ chức "${organizationType}" không được phép tạo CTE loại "${eventType}". ` +
+            `Các CTE được phép: ${getAllowedCTETypes(organizationType)
+              .map((c) => c.label)
+              .join(", ")}`,
+        )
+        setIsLoading(false)
+        return
+      }
+    }
+
+    if (chronologicalCheck && !chronologicalCheck.valid) {
+      setError(`⏰ ${chronologicalCheck.error}\n\n${chronologicalCheck.guidance}`)
+      setIsLoading(false)
+      return
+    }
+
+    if (eventType === "transformation") {
+      if (transformationInputs.length === 0) {
+        setError("❌ Transformation yêu cầu ít nhất 1 mã lô nguồn đầu vào")
+        setIsLoading(false)
+        return
+      }
+
+      const validation = await canCreateTransformation(transformationInputs.map((i) => i.tlc_code))
+      if (!validation.canCreate) {
+        setError(`❌ FSMA 204 VIOLATION:\n\n${validation.errors.join("\n\n")}`)
+        setIsLoading(false)
+        return
+      }
+    }
+
+    if (quantityError) {
+      setError(quantityError)
+      setIsLoading(false)
+      return
+    }
+
+    const actualEventType = getActualEventType(eventType as CTEType, organizationType as OrganizationType)
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    const kdeDataArray = Object.entries(kdeValues)
+      .filter(([_, value]) => value && value.trim() !== "")
+      .map(([key, value]) => ({
+        key_name: key,
+        key_value: value,
+      }))
+
     try {
-      // Insert CTE
-      const { data: cteData, error: insertError } = await supabase
-        .from("critical_tracking_events")
-        .insert(data)
-        .select()
-        .single()
+      const { data: rpcResult, error: rpcError } = await supabase.rpc("create_cte_with_kdes", {
+        p_tlc_id: selectedLot,
+        p_event_type: actualEventType,
+        p_event_date: formData.get("event_date") as string,
+        p_facility_id: selectedFacility || null,
+        p_responsible_person: formData.get("responsible_person") as string,
+        p_description: formData.get("description") as string,
+        p_temperature: formData.get("temperature") ? Number.parseFloat(formData.get("temperature") as string) : null,
+        p_quantity_processed: quantityInBaseUnit,
+        p_quantity_in_base_unit: quantityInBaseUnit,
+        p_unit: "kg",
+        p_location_details: formData.get("location_details") as string,
+        p_submitted_by: user?.id || null,
+        p_status: "draft",
+        p_is_correction: false,
+        p_kde_data: kdeDataArray,
+      })
 
-      if (insertError) throw insertError
+      if (rpcError) {
+        throw rpcError
+      }
 
-      if (cteData) {
-        const kdeInserts = Object.entries(kdeValues).map(([key, value]) => ({
-          cte_id: cteData.id,
-          key_name: key,
-          key_value: value,
+      if (!rpcResult?.success) {
+        throw new Error(rpcResult?.error || "Không thể tạo sự kiện CTE")
+      }
+
+      const cteId = rpcResult.cte_id
+
+      if (eventType === "transformation" && transformationInputs.length > 0 && cteId) {
+        const transformationInserts = transformationInputs.map((input) => ({
+          transformation_cte_id: cteId,
+          input_tlc_id: input.tlc_id,
+          quantity_used: input.quantity_used,
+          unit: (formData.get("unit") as string) || "kg",
         }))
 
-        if (kdeInserts.length > 0) {
-          const { error: kdeError } = await supabase.from("key_data_elements").insert(kdeInserts)
+        const { error: transformationError } = await supabase
+          .from("transformation_inputs")
+          .insert(transformationInserts)
 
-          if (kdeError) console.error("[v0] KDE insert error:", kdeError)
+        if (transformationError) {
+          console.error("[v0] Transformation inputs error:", transformationError)
+          throw new Error("Không thể lưu thông tin lô nguồn chế biến")
+        }
+
+        for (const input of transformationInputs) {
+          const { error: updateError } = await supabase.rpc("update_tlc_quantity_after_transformation", {
+            p_tlc_id: input.tlc_id,
+            p_quantity_used: input.quantity_used,
+          })
+
+          if (updateError) {
+            console.error("[v0] TLC quantity update error:", updateError)
+          }
         }
       }
 
@@ -225,37 +493,32 @@ export default function CreateCTEPage() {
       }
       router.refresh()
     } catch (err: any) {
-      if (err.message.includes("FSMA 204 VIOLATION")) {
+      console.error("[v0] CTE creation error:", err)
+
+      if (err.message?.includes("FSMA 204 VIOLATION") || err.message?.includes("VI PHẠM FSMA 204")) {
         setError(`❌ ${err.message}`)
-      } else if (err.message.includes("SEQUENCE VIOLATION")) {
-        setError(`🔗 ${err.message}`)
-      } else if (err.message.includes("TLC STATUS VIOLATION")) {
-        setError(`⛔ ${err.message}`)
+      } else if (err.message?.includes("CHRONOLOGICAL VIOLATION") || err.message?.includes("chronological")) {
+        setError(`⏰ ${err.message}`)
+      } else if (err.message?.includes("INVENTORY") || err.message?.includes("inventory")) {
+        setError(`📦 ${err.message}`)
       } else {
-        setError(err.message || "Đã xảy ra lỗi")
+        setError(`Lỗi: ${err.message || "Không thể tạo sự kiện CTE"}`)
       }
-    } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="container mx-auto py-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">Tạo sự kiện CTE</h1>
-        <p className="text-slate-500 mt-1">Critical Tracking Event - Sự kiện theo dõi quan trọng</p>
+        <h1 className="text-3xl font-bold text-slate-900">Tạo Sự Kiện CTE</h1>
+        <p className="text-slate-500 mt-1">Theo dõi các sự kiện quan trọng trong chuỗi cung ứng</p>
       </div>
 
-      {organizationType && allowedCTEs.length < 7 && (
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertDescription className="flex items-start gap-2">
-            <span className="flex-1">
-              Tổ chức của bạn (<strong>{organizationType}</strong>) chỉ được phép tạo {allowedCTEs.length} loại CTE theo
-              quy định FSMA 204:
-              <span className="ml-1 text-emerald-700 font-medium">{allowedCTEs.map((c) => c.label).join(", ")}</span>
-            </span>
-          </AlertDescription>
+      {error && (
+        <Alert variant="destructive" className="whitespace-pre-wrap">
+          <AlertCircle className="h-4 w-4" />
+          <p className="text-sm">{error}</p>
         </Alert>
       )}
 
@@ -265,12 +528,12 @@ export default function CreateCTEPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-4">
+            <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="tlc_id">
                   Mã TLC <span className="text-red-500">*</span>
                 </Label>
-                <Select value={selectedLot} onValueChange={setSelectedLot} required>
+                <Select value={selectedLot} onValueChange={handleTLCSelect} required>
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn mã TLC" />
                   </SelectTrigger>
@@ -284,172 +547,233 @@ export default function CreateCTEPage() {
                 </Select>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="event_type">
-                    Loại sự kiện <span className="text-red-500">*</span>
-                  </Label>
-                  <Select value={eventType} onValueChange={setEventType} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn loại sự kiện" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allowedCTEs.length > 0 ? (
-                        allowedCTEs.map((cte) => (
-                          <SelectItem key={cte.value} value={cte.value}>
-                            {cte.label}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <>
-                          <SelectItem value="harvest">Thu hoạch</SelectItem>
-                          <SelectItem value="cooling">Làm lạnh</SelectItem>
-                          <SelectItem value="packing">Đóng gói</SelectItem>
-                          <SelectItem value="receiving">Tiếp nhận</SelectItem>
-                          <SelectItem value="transformation">Chế biến</SelectItem>
-                          <SelectItem value="shipping">Vận chuyển</SelectItem>
-                        </>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {eventType && allowedCTEs.find((c) => c.value === eventType) && (
-                    <p className="text-xs text-muted-foreground">
-                      {allowedCTEs.find((c) => c.value === eventType)?.description}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="event_date">
-                    Thời gian sự kiện <span className="text-red-500">*</span>
-                  </Label>
-                  <Input id="event_date" name="event_date" type="datetime-local" required />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="facility_id">
-                    Cơ sở <span className="text-red-500">*</span>
-                  </Label>
-                  <Select value={selectedFacility} onValueChange={setSelectedFacility} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn cơ sở" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {facilities.map((facility) => (
-                        <SelectItem key={facility.id} value={facility.id}>
-                          {facility.name} ({facility.location_code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
               <div className="space-y-2">
-                <Label htmlFor="responsible_person">
-                  Người phụ trách <span className="text-red-500">*</span>
+                <Label htmlFor="event_type">
+                  Loại sự kiện <span className="text-red-500">*</span>
                 </Label>
-                <Input id="responsible_person" name="responsible_person" required placeholder="Nguyễn Văn A" />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Mô tả</Label>
-                <Textarea id="description" name="description" placeholder="Mô tả chi tiết về sự kiện" rows={3} />
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="quantity_processed">Số lượng xử lý</Label>
-                  <Input
-                    id="quantity_processed"
-                    name="quantity_processed"
-                    type="number"
-                    step="0.01"
-                    placeholder="100.00"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="unit">Đơn vị</Label>
-                  <Input id="unit" name="unit" placeholder="kg, lbs, units" />
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="temperature">Nhiệt độ (°C)</Label>
-                  <Input id="temperature" name="temperature" type="number" step="0.1" placeholder="4.0" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="location_details">Chi tiết vị trí</Label>
-                  <Input id="location_details" name="location_details" placeholder="Kho A, Tầng 2" />
-                </div>
+                <Select value={eventType} onValueChange={setEventType} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn loại sự kiện" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allowedCTEs.length > 0 ? (
+                      allowedCTEs.map((cte) => (
+                        <SelectItem key={cte.value} value={cte.value}>
+                          {cte.label}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <>
+                        <SelectItem value="harvest">Thu hoạch</SelectItem>
+                        <SelectItem value="cooling">Làm lạnh</SelectItem>
+                        <SelectItem value="packing">Đóng gói</SelectItem>
+                        <SelectItem value="receiving">Tiếp nhận</SelectItem>
+                        <SelectItem value="transformation">Chế biến</SelectItem>
+                        <SelectItem value="shipping">Vận chuyển</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {sequenceValidation && !sequenceValidation.valid && (
-              <Alert variant={sequenceValidation.error_code === "SEQUENCE_ERROR" ? "destructive" : "default"}>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>{sequenceValidation.error || sequenceValidation.warning}</strong>
-                  {sequenceValidation.suggestion && <p className="mt-1 text-sm">💡 {sequenceValidation.suggestion}</p>}
-                </AlertDescription>
-              </Alert>
+            {selectedLot && stockFetched && (
+              <div
+                className={`p-3 rounded-lg border ${
+                  availableStock !== null && availableStock <= 0
+                    ? "bg-red-50 border-red-300"
+                    : "bg-blue-50 border-blue-200"
+                }`}
+              >
+                {stockLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-blue-700">
+                    <div className="animate-spin h-3 w-3 border border-blue-500 border-t-transparent rounded-full" />
+                    Đang tính toán tồn kho...
+                  </div>
+                ) : availableStock !== null ? (
+                  <div className="space-y-1">
+                    <p
+                      className={`text-sm font-semibold ${
+                        availableStock <= 0
+                          ? "text-red-900"
+                          : availableStock < 100
+                            ? "text-orange-900"
+                            : "text-blue-900"
+                      }`}
+                    >
+                      {availableStock <= 0 ? "⚠️" : "📦"} Tồn kho khả dụng: {availableStock.toFixed(2)} kg
+                    </p>
+                    <p className={`text-xs ${availableStock <= 0 ? "text-red-700" : "text-blue-700"}`}>
+                      = Sản xuất + Tiếp nhận - Vận chuyển - Chế biến
+                    </p>
+                    {availableStock <= 0 && (
+                      <p className="text-xs text-red-800 font-semibold mt-2">
+                        ⛔ Hết hàng! Không thể tạo sự kiện làm lạnh, đóng gói, hoặc vận chuyển.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-red-600">Không thể tính tồn kho</p>
+                )}
+              </div>
             )}
 
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="event_date">
+                  Thời gian sự kiện <span className="text-red-500">*</span>
+                </Label>
+                <Input id="event_date" name="event_date" type="datetime-local" required />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="facility_id">Cơ sở</Label>
+                <Select value={selectedFacility} onValueChange={setSelectedFacility}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn cơ sở (tùy chọn)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {facilities.map((facility) => (
+                      <SelectItem key={facility.id} value={facility.id}>
+                        {facility.name} ({facility.location_code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="quantity_processed">
+                  Số lượng xử lý <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="quantity_processed"
+                  name="quantity_processed"
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="100.00"
+                  onChange={handleQuantityChange}
+                  className={quantityError ? "border-red-500 focus:ring-red-500" : ""}
+                />
+                {unitInfo && <p className="text-xs text-slate-500 mt-1">{unitInfo}</p>}
+                {quantityError && <p className="text-xs text-red-600 font-semibold">{quantityError}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="unit">
+                  Đơn vị <span className="text-red-500">*</span>
+                </Label>
+                <Select defaultValue="kg" onChange={(e) => handleUnitChange(e as any)}>
+                  <SelectTrigger id="unit" name="unit">
+                    <SelectValue placeholder="Chọn đơn vị" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="kg">kg (Kilogram)</SelectItem>
+                    <SelectItem value="g">g (Gram)</SelectItem>
+                    <SelectItem value="ton">Tấn</SelectItem>
+                    <SelectItem value="lbs">lbs (Pound)</SelectItem>
+                    <SelectItem value="units">Đơn vị</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="responsible_person">Người phụ trách</Label>
+                <Input id="responsible_person" name="responsible_person" placeholder="Nguyễn Văn A" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="temperature">Nhiệt độ (°C)</Label>
+                <Input id="temperature" name="temperature" type="number" step="0.1" placeholder="20" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Mô tả</Label>
+              <Textarea id="description" name="description" placeholder="Mô tả chi tiết về sự kiện..." rows={3} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location_details">Chi tiết vị trí</Label>
+              <Input id="location_details" name="location_details" placeholder="Kho A, Tầng 2" />
+            </div>
+
             {kdeFields.length > 0 && (
-              <div className="space-y-4 border-t pt-4">
-                <h3 className="font-semibold text-sm text-muted-foreground">Thông tin bổ sung (FSMA 204 KDE)</h3>
-
-                {kdeFields.map((field) => (
-                  <div key={field.kde_key} className="space-y-2">
-                    <Label htmlFor={field.kde_key}>
-                      {field.kde_label}
-                      {field.is_critical && <span className="text-red-500 ml-1">*</span>}
+              <div className="pt-4 border-t space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Trường dữ liệu bắt buộc (FSMA 204 KDE)</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Các trường này là bắt buộc theo quy định FDA FSMA Section 204
+                  </p>
+                </div>
+                {kdeFields.map((kde: any) => (
+                  <div key={kde.kde_key} className="space-y-2">
+                    <Label htmlFor={`kde_${kde.kde_key}`}>
+                      {kde.kde_label}
+                      {kde.is_critical && <span className="text-red-500 ml-1">*</span>}
                     </Label>
-
-                    {field.kde_key === "gps_latitude" || field.kde_key === "gps_longitude" ? (
-                      <div className="flex gap-2">
-                        <Input
-                          id={field.kde_key}
-                          value={kdeValues[field.kde_key] || ""}
-                          onChange={(e) => setKdeValues((prev) => ({ ...prev, [field.kde_key]: e.target.value }))}
-                          placeholder={field.help_text}
-                          required={field.is_critical}
-                          type="number"
-                          step="0.0001"
-                        />
-                        {field.kde_key === "gps_latitude" && (
-                          <Button type="button" onClick={getCurrentLocation} variant="outline">
-                            📍 Lấy GPS
-                          </Button>
-                        )}
-                      </div>
+                    {kde.help_text && <p className="text-xs text-slate-500 mb-1">{kde.help_text}</p>}
+                    {kde.field_type === "textarea" ? (
+                      <Textarea
+                        id={`kde_${kde.kde_key}`}
+                        value={kdeValues[kde.kde_key] || ""}
+                        onChange={(e) =>
+                          setKdeValues((prev) => ({
+                            ...prev,
+                            [kde.kde_key]: e.target.value,
+                          }))
+                        }
+                        required={kde.is_critical}
+                        placeholder={kde.kde_label}
+                        rows={2}
+                      />
                     ) : (
                       <Input
-                        id={field.kde_key}
-                        value={kdeValues[field.kde_key] || ""}
-                        onChange={(e) => setKdeValues((prev) => ({ ...prev, [field.kde_key]: e.target.value }))}
-                        placeholder={field.help_text}
-                        required={field.is_critical}
+                        id={`kde_${kde.kde_key}`}
+                        type={kde.field_type || "text"}
+                        value={kdeValues[kde.kde_key] || ""}
+                        onChange={(e) =>
+                          setKdeValues((prev) => ({
+                            ...prev,
+                            [kde.kde_key]: e.target.value,
+                          }))
+                        }
+                        required={kde.is_critical}
+                        placeholder={kde.kde_label}
                       />
                     )}
-
-                    {field.help_text && <p className="text-xs text-muted-foreground">{field.help_text}</p>}
                   </div>
                 ))}
               </div>
             )}
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm whitespace-pre-wrap">
-                {error}
+            {eventType === "transformation" && (
+              <div className="pt-4 border-t">
+                <TransformationInputSelector
+                  value={transformationInputs}
+                  onChange={setTransformationInputs}
+                  errors={transformationErrors}
+                  setErrors={setTransformationErrors}
+                />
               </div>
             )}
 
             <div className="flex gap-4 pt-4">
-              <Button type="submit" disabled={isLoading || !canSubmit}>
+              <Button
+                type="submit"
+                disabled={
+                  isLoading ||
+                  !!quantityError ||
+                  (availableStock !== null &&
+                    availableStock <= 0 &&
+                    ["cooling", "packing", "shipping"].includes(eventType))
+                }
+              >
                 {isLoading ? "Đang tạo..." : "Tạo sự kiện"}
               </Button>
               <Button type="button" variant="outline" onClick={() => router.back()} className="bg-transparent">
@@ -459,6 +783,129 @@ export default function CreateCTEPage() {
           </form>
         </CardContent>
       </Card>
+
+      {chronologicalCheck && !chronologicalCheck.valid && (
+        <Alert variant="destructive" className="border-red-300 bg-red-50">
+          <AlertCircle className="h-5 w-5" />
+          <AlertTitle className="font-semibold">Vi phạm thứ tự thời gian (Chronological Violation)</AlertTitle>
+          <AlertDescription className="mt-2 space-y-3">
+            {/* Main error message */}
+            <p className="font-medium">{chronologicalCheck.error}</p>
+
+            {/* Detailed comparison table */}
+            <div className="bg-white rounded-lg p-3 border border-red-200 mt-2">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground mb-1">Sự kiện gần nhất:</p>
+                  <p className="font-semibold text-foreground">
+                    {chronologicalCheck.last_event_type_vi || chronologicalCheck.last_event_type}
+                  </p>
+                  <p className="text-primary font-mono">
+                    {chronologicalCheck.last_event_date_formatted ||
+                      (chronologicalCheck.last_event_date &&
+                        new Date(chronologicalCheck.last_event_date).toLocaleString("vi-VN"))}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground mb-1">Sự kiện đang tạo:</p>
+                  <p className="font-semibold text-foreground">
+                    {chronologicalCheck.attempted_event_type_vi || eventType}
+                  </p>
+                  <p className="text-destructive font-mono">
+                    {chronologicalCheck.attempted_event_date_formatted || new Date().toLocaleString("vi-VN")}
+                  </p>
+                </div>
+              </div>
+
+              {/* Time difference */}
+              {chronologicalCheck.time_difference_human && (
+                <div className="mt-3 pt-3 border-t border-red-200">
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Chênh lệch: </span>
+                    <span className="font-semibold text-destructive">
+                      {chronologicalCheck.time_difference_human} trước sự kiện gần nhất
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Guidance */}
+            {chronologicalCheck.guidance && (
+              <p className="text-sm text-muted-foreground bg-amber-50 p-2 rounded border border-amber-200">
+                <strong>Hướng dẫn:</strong> {chronologicalCheck.guidance}
+              </p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {chronologicalCheck && chronologicalCheck.valid && !chronologicalCheck.first_event && (
+        <Alert className="border-green-300 bg-green-50">
+          <CheckCircle2 className="h-5 w-5 text-green-600" />
+          <AlertTitle className="text-green-800">Thời gian hợp lệ</AlertTitle>
+          <AlertDescription className="text-green-700">
+            {chronologicalCheck.message ||
+              `Sự kiện này xảy ra ${chronologicalCheck.time_since_last_event_human || "sau"} sự kiện "${chronologicalCheck.last_event_type_vi}" trước đó (${chronologicalCheck.last_event_date_formatted}).`}
+          </AlertDescription>
+        </Alert>
+      )}
     </div>
   )
+}
+
+function getFallbackKdeRequirements(eventType: string): any[] {
+  const kdeMap: Record<string, any[]> = {
+    shipping: [
+      {
+        kde_key: "destination_reference",
+        kde_label: "Thông tin điểm đến (Destination Reference)",
+        is_critical: true,
+        field_type: "text",
+        validation_rule: "NOT NULL",
+        help_text: "Nhập thông tin cơ sở đích nhận hàng (tên công ty, địa chỉ, hoặc mã GLN)",
+      },
+    ],
+    receiving: [
+      {
+        kde_key: "traceability_lot_code",
+        kde_label: "Mã lô truy xuất (Traceability Lot Code)",
+        is_critical: true,
+        field_type: "text",
+        validation_rule: "NOT NULL",
+        help_text: "Nhập mã TLC của lô hàng nhận được từ nhà cung cấp",
+      },
+    ],
+    harvesting: [
+      {
+        kde_key: "location_glo_code",
+        kde_label: "Mã GLO cơ sở (GLO Location Code)",
+        is_critical: true,
+        field_type: "text",
+        validation_rule: "NOT NULL",
+        help_text: "Nhập mã GLO hoặc GLN của cơ sở",
+      },
+      {
+        kde_key: "gps_coordinates",
+        kde_label: "Tọa độ GPS (GPS Coordinates)",
+        is_critical: true,
+        field_type: "text",
+        validation_rule: "NOT NULL",
+        help_text: "Nhập tọa độ GPS với ít nhất 4 chữ số thập phân",
+      },
+    ],
+    packing: [
+      {
+        kde_key: "location_glo_code",
+        kde_label: "Mã GLO cơ sở đóng gói",
+        is_critical: true,
+        field_type: "text",
+        validation_rule: "NOT NULL",
+        help_text: "Nhập mã định danh cơ sở đóng gói",
+      },
+    ],
+    transformation: [],
+    cooling: [],
+  }
+  return kdeMap[eventType] || []
 }

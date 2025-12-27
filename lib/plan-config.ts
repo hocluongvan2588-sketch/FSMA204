@@ -32,7 +32,7 @@ export interface PlanConfig {
   limits: PlanLimits
   features: PlanFeatures
   is_featured: boolean
-  sort_order: number
+  display_order: number
 }
 
 export interface CompanyOverride {
@@ -47,13 +47,13 @@ export interface CompanyOverride {
  * Get plan configuration from database
  * This is the SINGLE SOURCE OF TRUTH for all plan configs
  */
-export async function getPlanConfig(packageCode: string): Promise<PlanConfig | null> {
+export async function getPlanConfig(planName: string): Promise<PlanConfig | null> {
   const supabase = await createClient()
 
   const { data: pkg, error } = await supabase
     .from("service_packages")
-    .select("*")
-    .eq("package_code", packageCode)
+    .select("id, name, description, price_monthly, price_yearly, features, limits, display_order, is_active")
+    .eq("name", planName)
     .eq("is_active", true)
     .single()
 
@@ -64,33 +64,33 @@ export async function getPlanConfig(packageCode: string): Promise<PlanConfig | n
 
   return {
     plan_id: pkg.id,
-    plan_code: pkg.package_code,
-    name: pkg.package_name,
-    name_vi: pkg.package_name_vi,
-    description: pkg.description,
-    description_vi: pkg.description_vi,
+    plan_code: extractPlanCode(pkg.name),
+    name: pkg.name,
+    name_vi: pkg.name,
+    description: pkg.description || "",
+    description_vi: pkg.description || "",
     price_monthly: pkg.price_monthly,
     price_yearly: pkg.price_yearly,
     limits: {
-      users: pkg.max_users,
-      facilities: pkg.max_facilities,
-      products: pkg.max_products,
-      storage_gb: pkg.max_storage_gb,
+      users: pkg.limits?.max_users ?? -1,
+      facilities: pkg.limits?.max_facilities ?? -1,
+      products: pkg.limits?.max_products ?? -1,
+      storage_gb: pkg.limits?.max_storage_gb ?? 100,
     },
     features: {
-      qr_code: true, // All plans have QR code generation
-      cte_tracking: pkg.includes_cte_tracking,
-      kde_management: true, // All plans have basic KDE
-      fsma_204_report: pkg.includes_reporting,
-      fda_registration: pkg.includes_fda_management,
-      us_agent: pkg.includes_agent_management,
-      api_access: pkg.includes_api_access,
-      custom_branding: pkg.includes_custom_branding,
-      priority_support: pkg.includes_priority_support,
-      watermark: pkg.package_code === "FREE", // Only FREE has watermark
+      qr_code: true,
+      cte_tracking: pkg.features?.cte_tracking ?? true,
+      kde_management: true,
+      fsma_204_report: pkg.features?.fsma_204_report ?? true,
+      fda_registration: pkg.features?.fda_registration ?? false,
+      us_agent: pkg.features?.us_agent ?? false,
+      api_access: pkg.features?.api_access ?? false,
+      custom_branding: pkg.features?.custom_branding ?? false,
+      priority_support: pkg.features?.priority_support ?? false,
+      watermark: pkg.name === "Free",
     },
-    is_featured: pkg.is_featured,
-    sort_order: pkg.sort_order,
+    is_featured: pkg.name === "Professional",
+    display_order: pkg.display_order || 0,
   }
 }
 
@@ -101,47 +101,67 @@ export async function getPlanConfig(packageCode: string): Promise<PlanConfig | n
 export async function getAllPlanConfigs(): Promise<PlanConfig[]> {
   const supabase = await createClient()
 
+  console.log("[v0] Fetching all plan configs from service_packages...")
+
   const { data: packages, error } = await supabase
     .from("service_packages")
-    .select("*")
+    .select("id, name, description, price_monthly, price_yearly, features, limits, display_order, is_active")
     .eq("is_active", true)
-    .order("sort_order", { ascending: true })
+    .order("display_order", { ascending: true })
 
-  if (error || !packages) {
+  console.log("[v0] Query result:", { packages, error, count: packages?.length })
+
+  if (error) {
     console.error("[v0] Error fetching plan configs:", error)
     return []
   }
 
-  return packages.map((pkg) => ({
-    plan_id: pkg.id,
-    plan_code: pkg.package_code,
-    name: pkg.package_name,
-    name_vi: pkg.package_name_vi,
-    description: pkg.description,
-    description_vi: pkg.description_vi,
-    price_monthly: pkg.price_monthly,
-    price_yearly: pkg.price_yearly,
-    limits: {
-      users: pkg.max_users,
-      facilities: pkg.max_facilities,
-      products: pkg.max_products,
-      storage_gb: pkg.max_storage_gb,
-    },
-    features: {
-      qr_code: true,
-      cte_tracking: pkg.includes_cte_tracking,
-      kde_management: true,
-      fsma_204_report: pkg.includes_reporting,
-      fda_registration: pkg.includes_fda_management,
-      us_agent: pkg.includes_agent_management,
-      api_access: pkg.includes_api_access,
-      custom_branding: pkg.includes_custom_branding,
-      priority_support: pkg.includes_priority_support,
-      watermark: pkg.package_code === "FREE",
-    },
-    is_featured: pkg.is_featured,
-    sort_order: pkg.sort_order,
-  }))
+  if (!packages || packages.length === 0) {
+    console.log("[v0] No packages found in database")
+    return []
+  }
+
+  const mappedPackages = packages.map((pkg) => {
+    console.log("[v0] Mapping package:", pkg.name, { limits: pkg.limits, features: pkg.features })
+
+    return {
+      plan_id: pkg.id,
+      plan_code: extractPlanCode(pkg.name),
+      name: pkg.name,
+      name_vi: pkg.name,
+      description: pkg.description || "",
+      description_vi: pkg.description || "",
+      price_monthly: pkg.price_monthly,
+      price_yearly: pkg.price_yearly,
+      limits: {
+        users: pkg.limits?.max_users ?? -1,
+        facilities: pkg.limits?.max_facilities ?? -1,
+        products: pkg.limits?.max_products ?? -1,
+        storage_gb: pkg.limits?.max_storage_gb ?? 100,
+      },
+      features: {
+        qr_code: true,
+        cte_tracking: pkg.features?.cte_tracking ?? true,
+        kde_management: true,
+        fsma_204_report: pkg.features?.fsma_204_report ?? true,
+        fda_registration: pkg.features?.fda_registration ?? false,
+        us_agent: pkg.features?.us_agent ?? false,
+        api_access: pkg.features?.api_access ?? false,
+        custom_branding: pkg.features?.custom_branding ?? false,
+        priority_support: pkg.features?.priority_support ?? false,
+        watermark: pkg.name === "Free",
+      },
+      is_featured: pkg.name === "Professional",
+      display_order: pkg.display_order || 0,
+    }
+  })
+
+  console.log("[v0] Mapped packages count:", mappedPackages.length)
+  return mappedPackages
+}
+
+function extractPlanCode(name: string): string {
+  return name.toUpperCase().replace(/\s+/g, "_")
 }
 
 /**
@@ -155,25 +175,20 @@ export async function getCompanyEffectivePlan(companyId: string): Promise<PlanCo
     .from("company_subscriptions")
     .select(`
       *,
-      service_packages (
+      service_packages:package_id (
         id,
-        package_name,
-        package_code,
-        max_users,
-        max_facilities,
-        max_products,
-        max_storage_gb,
-        includes_fda_management,
-        includes_agent_management,
-        includes_cte_tracking,
-        includes_reporting,
-        includes_api_access,
-        includes_custom_branding,
-        includes_priority_support
+        name,
+        description,
+        price_monthly,
+        price_yearly,
+        features,
+        limits,
+        display_order,
+        is_active
       )
     `)
     .eq("company_id", companyId)
-    .in("subscription_status", ["active", "trial"])
+    .in("status", ["active", "trial"])
     .order("start_date", { ascending: false })
     .limit(1)
     .single()
@@ -183,8 +198,7 @@ export async function getCompanyEffectivePlan(companyId: string): Promise<PlanCo
     return null
   }
 
-  // Get base plan config
-  const basePlan = await getPlanConfig(subscription.service_packages.package_code)
+  const basePlan = await getPlanConfig(subscription.service_packages.name)
   if (!basePlan) return null
 
   // Check for admin overrides
@@ -240,21 +254,9 @@ export async function checkQuota(
 
   const limit = plan.limits[quotaType]
 
-  // Get current usage
-  const { data: subscription } = await supabase
-    .from("company_subscriptions")
-    .select("current_users_count, current_facilities_count, current_products_count, current_storage_gb")
-    .eq("company_id", companyId)
-    .single()
+  // These columns don't exist in company_subscriptions table
+  const current = 0 // TODO: Implement actual usage tracking
 
-  const currentMap = {
-    users: subscription?.current_users_count || 0,
-    facilities: subscription?.current_facilities_count || 0,
-    products: subscription?.current_products_count || 0,
-    storage_gb: subscription?.current_storage_gb || 0,
-  }
-
-  const current = currentMap[quotaType]
   const unlimited = limit === -1
   const allowed = unlimited || current < limit
 

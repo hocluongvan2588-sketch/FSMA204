@@ -54,6 +54,19 @@ export async function createUser(input: CreateUserInput) {
       return { error: "Bạn không có quyền tạo người dùng" }
     }
 
+    let adminClient
+    try {
+      adminClient = createAdminClient()
+      console.log("[v0] Admin client created successfully")
+    } catch (adminError: any) {
+      console.error("[v0] Admin client creation failed:", adminError.message)
+      return {
+        error: adminError.message.includes("SUPABASE_SERVICE_ROLE_KEY")
+          ? "Service role key chưa được cấu hình. Vui lòng thêm SUPABASE_SERVICE_ROLE_KEY vào environment variables. Xem hướng dẫn trong ENV_SETUP.md"
+          : `Lỗi khởi tạo admin client: ${adminError.message}`,
+      }
+    }
+
     if (currentProfile.role === "admin") {
       if (!currentProfile.company_id) {
         return { error: "Bạn chưa có công ty. Vui lòng liên hệ quản trị viên hệ thống." }
@@ -61,11 +74,120 @@ export async function createUser(input: CreateUserInput) {
       if (input.companyId && input.companyId !== currentProfile.company_id) {
         return { error: "Bạn chỉ có thể tạo người dùng cho công ty của mình" }
       }
-      // Force company_id to admin's company
       input.companyId = currentProfile.company_id
 
       if (input.role === "system_admin" || input.role === "admin") {
         return { error: "Bạn không có quyền tạo quản trị viên. Chỉ System Admin mới có quyền này." }
+      }
+    }
+
+    if (
+      currentProfile.role === "system_admin" &&
+      (input.role === "admin" || input.role === "company_admin") &&
+      !input.companyId
+    ) {
+      console.log("[v0] Auto-creating company for new admin user")
+
+      const companyName = input.companyName || `${input.fullName}'s Company`
+
+      const { data: newCompany, error: companyError } = await adminClient
+        .from("companies")
+        .insert({
+          name: companyName,
+          display_name: companyName,
+          email: input.email,
+          contact_person: input.fullName,
+        })
+        .select()
+        .single()
+
+      if (companyError) {
+        console.error("[v0] Failed to auto-create company:", companyError)
+        return { error: `Lỗi tạo công ty: ${companyError.message}` }
+      }
+
+      console.log("[v0] Company auto-created:", newCompany.id)
+      input.companyId = newCompany.id
+
+      const { data: freePackage, error: packageError } = await adminClient
+        .from("service_packages")
+        .select("id, name, price_monthly")
+        .or("name.ilike.%free%,price_monthly.eq.0")
+        .eq("is_active", true)
+        .limit(1)
+        .single()
+
+      if (!packageError && freePackage) {
+        console.log("[v0] Creating FREE subscription for new company")
+
+        const startDate = new Date()
+        const endDate = new Date()
+        endDate.setFullYear(endDate.getFullYear() + 100)
+
+        const { error: subError } = await adminClient.from("company_subscriptions").insert({
+          company_id: newCompany.id,
+          package_id: freePackage.id,
+          status: "active",
+          start_date: startDate.toISOString().split("T")[0],
+          end_date: endDate.toISOString().split("T")[0],
+          auto_renew: false,
+          billing_cycle: "monthly",
+          price_paid: 0,
+        })
+
+        if (subError) {
+          console.error("[v0] Failed to create FREE subscription:", subError)
+        } else {
+          console.log("[v0] FREE subscription created for company:", newCompany.id)
+        }
+      } else {
+        console.error("[v0] FREE package not found, company created without subscription")
+      }
+    }
+
+    if (currentProfile.role === "system_admin" && input.companyId) {
+      console.log("[v0] Checking if company has subscription:", input.companyId)
+
+      const { data: existingSubscription } = await adminClient
+        .from("company_subscriptions")
+        .select("id")
+        .eq("company_id", input.companyId)
+        .single()
+
+      if (!existingSubscription) {
+        console.log("[v0] Company has no subscription, creating FREE subscription")
+
+        const { data: freePackage } = await adminClient
+          .from("service_packages")
+          .select("id")
+          .eq("price_monthly", 0)
+          .eq("is_active", true)
+          .limit(1)
+          .single()
+
+        if (freePackage) {
+          const startDate = new Date()
+          const endDate = new Date()
+          endDate.setFullYear(endDate.getFullYear() + 100)
+
+          await adminClient.from("company_subscriptions").insert({
+            company_id: input.companyId,
+            package_id: freePackage.id,
+            status: "active",
+            start_date: startDate.toISOString().split("T")[0],
+            end_date: endDate.toISOString().split("T")[0],
+            auto_renew: false,
+            billing_cycle: "monthly",
+            price_paid: 0,
+          })
+
+          console.log("[v0] FREE subscription auto-created for company:", input.companyId)
+        }
+      }
+
+      if (input.companyName) {
+        console.log("[v0] Updating company display_name:", input.companyName)
+        await adminClient.from("companies").update({ display_name: input.companyName }).eq("id", input.companyId)
       }
     }
 
@@ -84,34 +206,6 @@ export async function createUser(input: CreateUserInput) {
         }
       }
       console.log("[v0] Quota check passed:", quotaCheck)
-    }
-
-    console.log("[v0] Creating admin client...")
-    let adminClient
-    try {
-      adminClient = createAdminClient()
-      console.log("[v0] Admin client created successfully")
-    } catch (adminError: any) {
-      console.error("[v0] Admin client creation failed:", adminError.message)
-      return {
-        error: adminError.message.includes("SUPABASE_SERVICE_ROLE_KEY")
-          ? "Service role key chưa được cấu hình. Vui lòng thêm SUPABASE_SERVICE_ROLE_KEY vào environment variables. Xem hướng dẫn trong ENV_SETUP.md"
-          : `Lỗi khởi tạo admin client: ${adminError.message}`,
-      }
-    }
-
-    if (currentProfile.role === "system_admin" && input.companyId && input.companyName) {
-      console.log("[v0] Updating company display_name:", input.companyName)
-      const { error: updateCompanyError } = await adminClient
-        .from("companies")
-        .update({ display_name: input.companyName })
-        .eq("id", input.companyId)
-
-      if (updateCompanyError) {
-        console.error("[v0] Failed to update company display_name:", updateCompanyError)
-      } else {
-        console.log("[v0] Company display_name updated successfully")
-      }
     }
 
     console.log("[v0] Creating auth user with metadata...")
@@ -136,22 +230,27 @@ export async function createUser(input: CreateUserInput) {
 
     console.log("[v0] Auth user created:", authData.user.id)
 
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     console.log("[v0] Updating profile with additional info...")
-    const { error: profileError } = await adminClient
-      .from("profiles")
-      .update({
+    const { error: profileError } = await adminClient.from("profiles").upsert(
+      {
+        id: authData.user.id,
+        email: input.email,
         company_id: input.companyId || null,
         full_name: input.fullName,
         role: input.role,
         phone: input.phone || null,
-        organization_type: input.organizationType || null, // Set organization type for CTE permissions
-      })
-      .eq("id", authData.user.id)
+        organization_type: input.organizationType || null,
+        language_preference: "vi",
+      },
+      {
+        onConflict: "id",
+      },
+    )
 
     if (profileError) {
-      console.error("[v0] Profile update error:", profileError)
+      console.error("[v0] Profile upsert error:", profileError)
       await adminClient.auth.admin.deleteUser(authData.user.id)
       return { error: `Lỗi cập nhật profile: ${profileError.message}` }
     }
@@ -200,7 +299,21 @@ export async function createCompany(input: {
       return { error: "Bạn không có quyền tạo công ty" }
     }
 
-    const { data, error } = await supabase
+    console.log("[v0] Creating admin client for company creation...")
+    let adminClient
+    try {
+      adminClient = createAdminClient()
+      console.log("[v0] Admin client created successfully")
+    } catch (adminError: any) {
+      console.error("[v0] Admin client creation failed:", adminError.message)
+      return {
+        error: adminError.message.includes("SUPABASE_SERVICE_ROLE_KEY")
+          ? "Service role key chưa được cấu hình. Vui lòng thêm SUPABASE_SERVICE_ROLE_KEY vào environment variables."
+          : `Lỗi khởi tạo admin client: ${adminError.message}`,
+      }
+    }
+
+    const { data, error } = await adminClient
       .from("companies")
       .insert({
         name: input.name,
@@ -222,17 +335,17 @@ export async function createCompany(input: {
     console.log("[v0] Company created:", data.id)
 
     console.log("[v0] Attempting to create FREE subscription for new company")
-    const { data: freePackage, error: packageError } = await supabase
+    const { data: freePackage, error: packageError } = await adminClient
       .from("service_packages")
-      .select("id, package_code, package_name, monthly_price_usd")
-      .eq("package_code", "FREE")
+      .select("id, name, price_monthly")
+      .eq("price_monthly", 0)
       .eq("is_active", true)
+      .limit(1)
       .single()
 
     if (packageError || !freePackage) {
       console.error("[v0] FREE package not found:", packageError)
       console.error("[v0] WARNING: Company created but no FREE subscription assigned!")
-      console.error("[v0] Please run: scripts/001-seed-service-packages.sql")
       return {
         success: true,
         company: data,
@@ -243,25 +356,19 @@ export async function createCompany(input: {
 
       const startDate = new Date()
       const endDate = new Date()
-      endDate.setFullYear(endDate.getFullYear() + 100) // Free plan never expires
+      endDate.setFullYear(endDate.getFullYear() + 100)
 
-      const { data: newSubscription, error: subError } = await supabase
+      const { data: newSubscription, error: subError } = await adminClient
         .from("company_subscriptions")
         .insert({
           company_id: data.id,
           package_id: freePackage.id,
-          subscription_status: "active", // Critical: Set to 'active', not 'trial'
+          status: "active",
           billing_cycle: "monthly",
-          start_date: startDate.toISOString().split("T")[0], // DATE format
-          end_date: endDate.toISOString().split("T")[0], // DATE format
-          current_price: freePackage.monthly_price_usd || 0, // Required field
-          currency: "USD",
-          payment_method: "free",
-          payment_provider: "free", // Added for clarity
-          current_users_count: 0,
-          current_facilities_count: 0,
-          current_products_count: 0,
-          current_storage_gb: 0,
+          start_date: startDate.toISOString().split("T")[0],
+          end_date: endDate.toISOString().split("T")[0],
+          price_paid: 0,
+          auto_renew: false,
         })
         .select()
         .single()
@@ -329,7 +436,6 @@ export async function deleteUser(userId: string) {
       if (!userProfile || userProfile.company_id !== currentProfile.company_id) {
         return { error: "Bạn chỉ có thể xóa người dùng trong công ty của mình" }
       }
-      // Admins cannot delete other admins or system admins
       if (userProfile.role === "admin" || userProfile.role === "system_admin") {
         return { error: "Bạn không thể xóa quản trị viên khác" }
       }

@@ -1,8 +1,9 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-import { Crown, Zap, Rocket, Sparkles } from "lucide-react"
+import { Crown, Zap, Rocket, Sparkles, ChevronRight } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import type { JSX } from "react"
 
 interface PlanBadgeProps {
@@ -17,6 +18,8 @@ export function PlanBadge({ companyId, variant = "default" }: PlanBadgeProps) {
     status: string
   } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isHovered, setIsHovered] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     async function fetchPlan() {
@@ -72,21 +75,63 @@ export function PlanBadge({ companyId, variant = "default" }: PlanBadgeProps) {
     return colors[status] || "bg-slate-100 text-slate-700"
   }
 
+  const handleClick = () => {
+    if (plan.code === "FREE") {
+      router.push("/admin/my-subscription")
+    } else {
+      router.push("/admin/my-subscription")
+    }
+  }
+
   if (variant === "compact") {
     return (
-      <Badge className={`${getColor(plan.code)} border font-medium`}>
+      <button
+        onClick={handleClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all duration-200 cursor-pointer ${getColor(plan.code)} ${
+          isHovered ? "shadow-md hover:scale-105 ring-2 ring-offset-2" : ""
+        } ${isHovered && plan.code === "FREE" ? "ring-emerald-300" : "ring-slate-300"}`}
+      >
         {getIcon(plan.code)}
-        <span className="ml-1">{plan.name}</span>
-      </Badge>
+        <span className="text-sm font-semibold">
+          {isHovered && plan.code === "FREE" ? (
+            <span className="flex items-center gap-1">
+              Plan: Free
+              <span className="text-xs font-bold text-emerald-600">(Upgrade)</span>
+              <ChevronRight className="h-3 w-3" />
+            </span>
+          ) : (
+            plan.name
+          )}
+        </span>
+      </button>
     )
   }
 
   return (
     <div className="flex items-center gap-2">
-      <Badge className={`${getColor(plan.code)} border font-medium`}>
+      <button
+        onClick={handleClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all duration-200 cursor-pointer ${getColor(plan.code)} ${
+          isHovered ? "shadow-md hover:scale-105 ring-2 ring-offset-2" : ""
+        } ${isHovered && plan.code === "FREE" ? "ring-emerald-300" : "ring-slate-300"}`}
+      >
         {getIcon(plan.code)}
-        <span className="ml-1">{plan.name}</span>
-      </Badge>
+        <span>
+          {isHovered && plan.code === "FREE" ? (
+            <span className="flex items-center gap-1">
+              Plan: Free
+              <span className="text-xs font-bold text-emerald-600">(Upgrade)</span>
+              <ChevronRight className="h-3 w-3" />
+            </span>
+          ) : (
+            plan.name
+          )}
+        </span>
+      </button>
       <Badge className={getStatusColor(plan.status)} variant="secondary">
         {plan.status === "active" ? "Đang hoạt động" : plan.status === "trial" ? "Dùng thử" : "Hết hạn"}
       </Badge>

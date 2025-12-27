@@ -38,6 +38,7 @@ export interface SubscriptionLimits {
 
 /**
  * Get company's active subscription with quotas
+ * Added graceful fallback: if no subscription found, default to FREE plan instead of returning null
  */
 export async function getCompanySubscription(companyId: string): Promise<SubscriptionQuotas | null> {
   const supabase = await createClient()
@@ -46,51 +47,69 @@ export async function getCompanySubscription(companyId: string): Promise<Subscri
     .from("company_subscriptions")
     .select(`
       *,
-      service_packages (
-        package_name,
-        max_users,
-        max_facilities,
-        max_products,
-        max_storage_gb,
-        includes_fda_management,
-        includes_agent_management,
-        includes_cte_tracking,
-        includes_reporting,
-        includes_api_access,
-        includes_custom_branding
+      service_packages!inner (
+        name,
+        features,
+        limits
       )
     `)
     .eq("company_id", companyId)
-    .in("subscription_status", ["active", "trial"])
+    .in("status", ["active", "trial"])
     .order("start_date", { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
-  if (error || !subscription || !subscription.service_packages) {
-    console.log("[v0] No active/trial subscription found for company:", companyId, error)
+  if (error) {
+    console.error("[v0] Error fetching subscription:", error)
     return null
   }
 
+  if (!subscription || !subscription.service_packages) {
+    console.log("[v0] No active/trial subscription found for company:", companyId, "- defaulting to FREE plan")
+    return {
+      maxUsers: 5,
+      maxFacilities: 1,
+      maxProducts: 10,
+      maxStorageGb: 1,
+      currentUsers: 0,
+      currentFacilities: 0,
+      currentProducts: 0,
+      currentStorageGb: 0,
+      subscriptionStatus: "free_default",
+      packageName: "Free (Default)",
+      features: {
+        fda: false,
+        agent: false,
+        cte: true,
+        reporting: false,
+        api: false,
+        branding: false,
+      },
+    }
+  }
+
   const pkg = subscription.service_packages as any
+  const limits = pkg.limits || {}
+  const features = pkg.features || {}
 
   return {
-    maxUsers: pkg.max_users,
-    maxFacilities: pkg.max_facilities,
-    maxProducts: pkg.max_products,
-    maxStorageGb: pkg.max_storage_gb,
+    maxUsers: limits.max_users || 1,
+    maxFacilities: limits.max_facilities || 1,
+    maxProducts: limits.max_products || 3,
+    maxStorageGb: limits.max_storage_gb || 0,
     currentUsers: subscription.current_users_count || 0,
     currentFacilities: subscription.current_facilities_count || 0,
     currentProducts: subscription.current_products_count || 0,
     currentStorageGb: subscription.current_storage_gb || 0,
-    subscriptionStatus: subscription.subscription_status,
-    packageName: pkg.package_name,
+    subscriptionStatus: subscription.status,
+    packageName: pkg.name,
     features: {
-      fda: pkg.includes_fda_management,
-      agent: pkg.includes_agent_management,
-      cte: pkg.includes_cte_tracking,
-      reporting: pkg.includes_reporting,
-      api: pkg.includes_api_access,
-      branding: pkg.includes_custom_branding,
+      fda: features.fda_registration === true,
+      agent: features.us_agent === true,
+      cte: features.cte_tracking === true,
+      reporting: features.advanced_reporting === true,
+      api: features.api_access === true,
+      branding: features.custom_branding === true,
     },
   }
 }
@@ -143,7 +162,9 @@ export async function checkFacilityQuota(companyId: string): Promise<QuotaCheck>
 
   const unlimited = subscription.maxFacilities === -1
   const allowed =
-    (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trial") &&
+    (subscription.subscriptionStatus === "active" ||
+      subscription.subscriptionStatus === "trial" ||
+      subscription.subscriptionStatus === "free_default") &&
     (unlimited || subscription.currentFacilities < subscription.maxFacilities)
 
   return {
@@ -173,7 +194,9 @@ export async function checkProductQuota(companyId: string): Promise<QuotaCheck> 
 
   const unlimited = subscription.maxProducts === -1
   const allowed =
-    (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trial") &&
+    (subscription.subscriptionStatus === "active" ||
+      subscription.subscriptionStatus === "trial" ||
+      subscription.subscriptionStatus === "free_default") &&
     (unlimited || subscription.currentProducts < subscription.maxProducts)
 
   return {
@@ -254,43 +277,16 @@ export async function recalculateUsage(companyId: string): Promise<void> {
 }
 
 async function getSubscriptionLimits(companyId: string): Promise<SubscriptionLimits | null> {
-  const supabase = await createClient()
+  const subscription = await getCompanySubscription(companyId)
 
-  const { data: subscription, error } = await supabase
-    .from("company_subscriptions")
-    .select(`
-      *,
-      service_packages (
-        package_name,
-        max_users,
-        max_facilities,
-        max_products,
-        max_storage_gb,
-        includes_fda_management,
-        includes_agent_management,
-        includes_cte_tracking,
-        includes_reporting,
-        includes_api_access,
-        includes_custom_branding
-      )
-    `)
-    .eq("company_id", companyId)
-    .in("subscription_status", ["active", "trial"])
-    .order("start_date", { ascending: false })
-    .limit(1)
-    .single()
-
-  if (error || !subscription || !subscription.service_packages) {
-    console.log("[v0] No active/trial subscription found for company:", companyId, error)
+  if (!subscription) {
     return null
   }
 
-  const pkg = subscription.service_packages as any
-
   return {
-    maxUsers: pkg.max_users,
-    maxFacilities: pkg.max_facilities,
-    maxProducts: pkg.max_products,
-    maxStorageGB: pkg.max_storage_gb,
+    maxUsers: subscription.maxUsers,
+    maxFacilities: subscription.maxFacilities,
+    maxProducts: subscription.maxProducts,
+    maxStorageGB: subscription.maxStorageGb,
   }
 }

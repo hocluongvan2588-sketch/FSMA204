@@ -42,7 +42,16 @@ export default function CreateLotPage() {
     setIsLoading(true)
     setError(null)
 
-    const formData = new FormData(e.currentTarget)
+    let formData: FormData
+    try {
+      formData = new FormData(e.currentTarget)
+    } catch (err) {
+      console.error("[v0] FormData construction error:", err)
+      setError("Lỗi khi xử lý form. Vui lòng thử lại.")
+      setIsLoading(false)
+      return
+    }
+
     const data = {
       tlc: formData.get("tlc") as string,
       product_id: selectedProduct,

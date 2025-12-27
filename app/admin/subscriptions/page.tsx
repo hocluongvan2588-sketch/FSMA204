@@ -100,7 +100,7 @@ export default function AdminSubscriptionsPage() {
           `)
           .order("created_at", { ascending: false }),
         supabase.from("companies").select("id, name").order("name"),
-        supabase.from("service_packages").select("*").eq("is_active", true).order("sort_order"),
+        supabase.from("service_packages").select("*").eq("is_active", true).order("display_order"),
       ])
 
       if (subsRes.error) throw subsRes.error

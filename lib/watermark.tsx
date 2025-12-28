@@ -22,7 +22,7 @@ export function getWatermarkConfig(): WatermarkConfig {
 }
 
 /**
- * Check if watermark should be applied based on subscription
+ * Check if watermark should be applied based on subscription (Server-side only)
  */
 export async function shouldApplyWatermark(companyId: string): Promise<boolean> {
   const subscription = await getCompanySubscription(companyId)
@@ -31,71 +31,4 @@ export async function shouldApplyWatermark(companyId: string): Promise<boolean> 
 
   // Apply watermark only for Free tier
   return subscription.packageName.toLowerCase().includes("free")
-}
-
-/**
- * Generate watermark SVG for PDF exports
- */
-export function generateWatermarkSVG(config: WatermarkConfig): string {
-  return `
-    <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="position: absolute; top: 0; left: 0; pointer-events: none;">
-      <defs>
-        <pattern id="watermark-pattern" x="0" y="0" width="400" height="400" patternUnits="userSpaceOnUse">
-          <text 
-            x="200" 
-            y="200" 
-            transform="rotate(${config.rotation} 200 200)"
-            font-size="${config.fontSize}" 
-            fill="${config.color}" 
-            opacity="${config.opacity}"
-            text-anchor="middle"
-            font-family="Arial, sans-serif"
-            font-weight="600"
-          >
-            ${config.text}
-          </text>
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#watermark-pattern)" />
-    </svg>
-  `
-}
-
-/**
- * Watermark overlay component for print pages
- */
-export function WatermarkOverlay({ packageName }: { packageName: string }) {
-  if (!packageName.toLowerCase().includes("free")) {
-    return null
-  }
-
-  const config = getWatermarkConfig()
-
-  return (
-    <div
-      className="fixed inset-0 pointer-events-none z-50 select-none print:block"
-      style={{
-        background: `repeating-linear-gradient(
-          ${config.rotation}deg,
-          transparent,
-          transparent 200px,
-          rgba(100, 116, 139, 0.05) 200px,
-          rgba(100, 116, 139, 0.05) 201px
-        )`,
-      }}
-    >
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          className="text-slate-400 font-semibold select-none whitespace-nowrap"
-          style={{
-            fontSize: `${config.fontSize}px`,
-            opacity: config.opacity,
-            transform: `rotate(${config.rotation}deg)`,
-          }}
-        >
-          {config.text}
-        </div>
-      </div>
-    </div>
-  )
 }

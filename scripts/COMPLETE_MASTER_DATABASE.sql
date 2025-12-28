@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   phone TEXT,
   position TEXT,
   is_active BOOLEAN DEFAULT true,
+  language_preference TEXT DEFAULT 'vi',
+  organization_type TEXT,
+  allowed_cte_types TEXT[],
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -242,7 +245,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   ip_address TEXT,
   user_agent TEXT,
   is_critical BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 14. Chronological Order Validations
@@ -316,6 +320,7 @@ CREATE TABLE IF NOT EXISTS exporter_facilities (
 CREATE TABLE IF NOT EXISTS service_packages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT UNIQUE NOT NULL,
+  package_code TEXT UNIQUE NOT NULL,
   description TEXT,
   price_monthly NUMERIC NOT NULL,
   price_yearly NUMERIC NOT NULL,
@@ -799,54 +804,63 @@ $$;
 -- =====================================================
 
 -- Trigger: Auto-populate KDEs when CTE is created
+DROP TRIGGER IF EXISTS trigger_auto_populate_kdes ON critical_tracking_events;
 CREATE TRIGGER trigger_auto_populate_kdes
   AFTER INSERT ON critical_tracking_events
   FOR EACH ROW
   EXECUTE FUNCTION auto_populate_kdes();
 
 -- Trigger: Handle inventory on receiving
+DROP TRIGGER IF EXISTS trigger_handle_receiving_inventory ON critical_tracking_events;
 CREATE TRIGGER trigger_handle_receiving_inventory
   AFTER INSERT ON critical_tracking_events
   FOR EACH ROW
   EXECUTE FUNCTION handle_receiving_event_inventory();
 
 -- Trigger: Handle inventory deduction on CTE events
+DROP TRIGGER IF EXISTS trigger_handle_cte_inventory_deduction ON critical_tracking_events;
 CREATE TRIGGER trigger_handle_cte_inventory_deduction
   AFTER INSERT ON critical_tracking_events
   FOR EACH ROW
   EXECUTE FUNCTION handle_cte_inventory_deduction();
 
 -- Trigger: Validate chronological order
+DROP TRIGGER IF EXISTS trigger_validate_chronological_order ON critical_tracking_events;
 CREATE TRIGGER trigger_validate_chronological_order
   BEFORE INSERT OR UPDATE ON critical_tracking_events
   FOR EACH ROW
   EXECUTE FUNCTION validate_chronological_order();
 
 -- Trigger: Update timestamps on companies
+DROP TRIGGER IF EXISTS trigger_update_companies_timestamp ON companies;
 CREATE TRIGGER trigger_update_companies_timestamp
   BEFORE UPDATE ON companies
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();
 
 -- Trigger: Update timestamps on profiles
+DROP TRIGGER IF EXISTS trigger_update_profiles_timestamp ON profiles;
 CREATE TRIGGER trigger_update_profiles_timestamp
   BEFORE UPDATE ON profiles
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();
 
 -- Trigger: Update timestamps on facilities
+DROP TRIGGER IF EXISTS trigger_update_facilities_timestamp ON facilities;
 CREATE TRIGGER trigger_update_facilities_timestamp
   BEFORE UPDATE ON facilities
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();
 
 -- Trigger: Update timestamps on products
+DROP TRIGGER IF EXISTS trigger_update_products_timestamp ON products;
 CREATE TRIGGER trigger_update_products_timestamp
   BEFORE UPDATE ON products
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();
 
 -- Trigger: Update timestamps on traceability_lots
+DROP TRIGGER IF EXISTS trigger_update_tlc_timestamp ON traceability_lots;
 CREATE TRIGGER trigger_update_tlc_timestamp
   BEFORE UPDATE ON traceability_lots
   FOR EACH ROW
@@ -898,9 +912,11 @@ ALTER TABLE alert_logs ENABLE ROW LEVEL SECURITY;
 -- =====================================================
 
 -- Companies: Users can only see their own company
+DROP POLICY IF EXISTS companies_select_own ON companies;
 CREATE POLICY companies_select_own ON companies
   FOR SELECT USING (id = get_user_company_id());
 
+DROP POLICY IF EXISTS companies_update_admin ON companies;
 CREATE POLICY companies_update_admin ON companies
   FOR UPDATE USING (
     id = get_user_company_id() AND 
@@ -908,12 +924,15 @@ CREATE POLICY companies_update_admin ON companies
   );
 
 -- Profiles: Users can see profiles in their company
+DROP POLICY IF EXISTS profiles_select_company ON profiles;
 CREATE POLICY profiles_select_company ON profiles
   FOR SELECT USING (company_id = get_user_company_id());
 
+DROP POLICY IF EXISTS profiles_update_self ON profiles;
 CREATE POLICY profiles_update_self ON profiles
   FOR UPDATE USING (id = auth.uid());
 
+DROP POLICY IF EXISTS profiles_update_admin ON profiles;
 CREATE POLICY profiles_update_admin ON profiles
   FOR UPDATE USING (
     company_id = get_user_company_id() AND 
@@ -921,9 +940,11 @@ CREATE POLICY profiles_update_admin ON profiles
   );
 
 -- Facilities: Users can see facilities in their company
+DROP POLICY IF EXISTS facilities_select_company ON facilities;
 CREATE POLICY facilities_select_company ON facilities
   FOR SELECT USING (company_id = get_user_company_id());
 
+DROP POLICY IF EXISTS facilities_all_admin ON facilities;
 CREATE POLICY facilities_all_admin ON facilities
   FOR ALL USING (
     company_id = get_user_company_id() AND 
@@ -931,9 +952,11 @@ CREATE POLICY facilities_all_admin ON facilities
   );
 
 -- Products: Users can see products in their company
+DROP POLICY IF EXISTS products_select_company ON products;
 CREATE POLICY products_select_company ON products
   FOR SELECT USING (company_id = get_user_company_id());
 
+DROP POLICY IF EXISTS products_all_admin ON products;
 CREATE POLICY products_all_admin ON products
   FOR ALL USING (
     company_id = get_user_company_id() AND 
@@ -941,6 +964,7 @@ CREATE POLICY products_all_admin ON products
   );
 
 -- Traceability Lots: Users can see TLCs in their company
+DROP POLICY IF EXISTS tlc_select_company ON traceability_lots;
 CREATE POLICY tlc_select_company ON traceability_lots
   FOR SELECT USING (
     EXISTS (
@@ -950,6 +974,7 @@ CREATE POLICY tlc_select_company ON traceability_lots
     )
   );
 
+DROP POLICY IF EXISTS tlc_all_operator ON traceability_lots;
 CREATE POLICY tlc_all_operator ON traceability_lots
   FOR ALL USING (
     EXISTS (
@@ -960,6 +985,7 @@ CREATE POLICY tlc_all_operator ON traceability_lots
   );
 
 -- Critical Tracking Events: Users can see CTEs in their company
+DROP POLICY IF EXISTS cte_select_company ON critical_tracking_events;
 CREATE POLICY cte_select_company ON critical_tracking_events
   FOR SELECT USING (
     EXISTS (
@@ -969,6 +995,7 @@ CREATE POLICY cte_select_company ON critical_tracking_events
     )
   );
 
+DROP POLICY IF EXISTS cte_all_operator ON critical_tracking_events;
 CREATE POLICY cte_all_operator ON critical_tracking_events
   FOR ALL USING (
     EXISTS (
@@ -979,20 +1006,25 @@ CREATE POLICY cte_all_operator ON critical_tracking_events
   );
 
 -- KDE Requirements: Public read access
+DROP POLICY IF EXISTS kde_requirements_select_all ON kde_requirements;
 CREATE POLICY kde_requirements_select_all ON kde_requirements
   FOR SELECT USING (true);
 
 -- Notifications: Users can only see their own notifications
+DROP POLICY IF EXISTS notifications_select_own ON notifications;
 CREATE POLICY notifications_select_own ON notifications
   FOR SELECT USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS notifications_update_own ON notifications;
 CREATE POLICY notifications_update_own ON notifications
   FOR UPDATE USING (user_id = auth.uid());
 
 -- System Settings: Public settings visible to all
+DROP POLICY IF EXISTS system_settings_select_public ON system_settings;
 CREATE POLICY system_settings_select_public ON system_settings
   FOR SELECT USING (is_public = true);
 
+DROP POLICY IF EXISTS system_settings_all_admin ON system_settings;
 CREATE POLICY system_settings_all_admin ON system_settings
   FOR ALL USING (get_user_role() = 'system_admin');
 
@@ -1023,20 +1055,20 @@ VALUES
 ON CONFLICT (event_type, kde_code) DO NOTHING;
 
 -- Insert Service Packages
-INSERT INTO service_packages (name, description, price_monthly, price_yearly, features, limits, display_order)
+INSERT INTO service_packages (name, package_code, description, price_monthly, price_yearly, features, limits, display_order)
 VALUES
-  ('Free', 'Basic features for small businesses', 0, 0, 
+  ('Free', 'FREE', 'Basic features for small businesses', 0, 0, 
    '["Basic traceability", "Up to 50 TLCs", "1 facility"]'::jsonb,
    '{"max_tlcs": 50, "max_facilities": 1, "max_users": 2}'::jsonb, 1),
   
-  ('Professional', 'Advanced features for growing businesses', 99, 999,
+  ('Professional', 'PROFESSIONAL', 'Advanced features for growing businesses', 99, 999,
    '["Full traceability", "Unlimited TLCs", "5 facilities", "Priority support"]'::jsonb,
    '{"max_tlcs": -1, "max_facilities": 5, "max_users": 10}'::jsonb, 2),
   
-  ('Enterprise', 'Complete solution for large organizations', 299, 2999,
+  ('Enterprise', 'ENTERPRISE', 'Complete solution for large organizations', 299, 2999,
    '["All features", "Unlimited everything", "Dedicated support", "Custom integrations"]'::jsonb,
    '{"max_tlcs": -1, "max_facilities": -1, "max_users": -1}'::jsonb, 3)
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (package_code) DO NOTHING;
 
 -- =====================================================
 -- VERIFICATION QUERIES

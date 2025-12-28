@@ -57,6 +57,7 @@ interface FDARegistration {
     us_agents?: {
       agent_name: string
       email: string
+      phone: string
     }
     assignment_date: string
     expiry_date: string
@@ -67,7 +68,7 @@ interface FDARegistration {
 interface Company {
   id: string
   name: string
-  tax_id: string
+  registration_number: string
   email: string | null
 }
 
@@ -78,7 +79,7 @@ interface USAgent {
   phone: string
 }
 
-export default function FDARegistrationsPage() {
+export default function AdminFDARegistrationsPage() {
   const { toast } = useToast()
   const [registrations, setRegistrations] = useState<FDARegistration[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
@@ -88,6 +89,7 @@ export default function FDARegistrationsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [userCompanyId, setUserCompanyId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState<
     Partial<FDARegistration & { us_agent_id?: string; registration_years?: number }>
@@ -121,73 +123,168 @@ export default function FDARegistrationsPage() {
 
   useEffect(() => {
     loadData()
-    checkUserRole()
   }, [])
 
   const loadData = async () => {
     setIsLoading(true)
     const supabase = createClient()
 
-    // Fetch companies
-    const { data: companiesData } = await supabase.from("companies").select("id, name, tax_id, email").order("name")
+    console.log("[v0] Checking user authentication and role...")
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
 
-    console.log("[v0] Companies loaded:", companiesData)
-    if (companiesData) setCompanies(companiesData)
+    if (userError || !user) {
+      console.error("[v0] User authentication failed:", userError)
+      toast({
+        variant: "destructive",
+        title: "Authentication Error",
+        description: "Unable to verify user permissions. Please refresh the page.",
+      })
+      setIsLoading(false)
+      return
+    }
 
-    // Fetch US agents (no company_id filter needed - agents are independent)
-    const { data: usAgentsData } = await supabase
+    console.log("[v0] User authenticated:", user.id)
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role, company_id")
+      .eq("id", user.id)
+      .single()
+
+    if (profileError) {
+      console.error("[v0] Error loading user profile:", profileError)
+      toast({
+        variant: "destructive",
+        title: "Permission Error",
+        description: "Unable to load user permissions. Please contact support.",
+      })
+      setIsLoading(false)
+      return
+    }
+
+    const currentRole = profile?.role
+    const userCompanyId = profile?.company_id
+    setUserRole(currentRole)
+    setUserCompanyId(userCompanyId)
+    console.log("[v0] User role:", currentRole, "Company ID:", userCompanyId)
+
+    if (!currentRole || !["system_admin", "admin"].includes(currentRole)) {
+      console.warn("[v0] Insufficient permissions. User role:", currentRole)
+      toast({
+        variant: "destructive",
+        title: "Access Denied",
+        description: "You don't have permission to access this page. System Admin or Admin role required.",
+      })
+      setIsLoading(false)
+      return
+    }
+
+    console.log("[v0] Loading companies...")
+    const companiesQuery = supabase.from("companies").select("id, name, registration_number, email").order("name")
+
+    if (currentRole !== "system_admin" && userCompanyId) {
+      companiesQuery.eq("id", userCompanyId)
+    }
+
+    const { data: companiesData, error: companiesError } = await companiesQuery
+
+    if (companiesError) {
+      console.error("[v0] Error loading companies:", {
+        message: companiesError.message,
+        code: companiesError.code,
+        details: companiesError.details,
+        hint: companiesError.hint,
+      })
+    } else {
+      console.log("[v0] Companies loaded:", companiesData?.length || 0)
+      if (companiesData) setCompanies(companiesData)
+    }
+
+    console.log("[v0] Loading US agents...")
+    const agentsQuery = supabase
       .from("us_agents")
       .select("id, agent_name, email, phone")
       .eq("is_active", true)
       .order("agent_name")
 
-    console.log("[v0] US Agents loaded:", usAgentsData)
-    if (usAgentsData) setUsAgents(usAgentsData)
+    if (currentRole !== "system_admin" && userCompanyId) {
+      agentsQuery.eq("company_id", userCompanyId)
+    }
 
-    // Fetch FDA registrations with company and agent assignment info
-    const { data: registrationsData, error } = await supabase
+    const { data: usAgentsData, error: agentsError } = await agentsQuery
+
+    if (agentsError) {
+      console.error("[v0] Error loading US agents:", {
+        message: agentsError.message,
+        code: agentsError.code,
+        details: agentsError.details,
+        hint: agentsError.hint,
+        userRole: currentRole,
+        companyId: userCompanyId,
+      })
+      toast({
+        variant: "destructive",
+        title: "Data Loading Error",
+        description: `Failed to load US agents: ${agentsError.message || "Permission denied"}`,
+      })
+    } else {
+      console.log("[v0] US Agents loaded:", usAgentsData?.length || 0)
+      if (usAgentsData) setUsAgents(usAgentsData)
+    }
+
+    console.log("[v0] Loading FDA registrations...")
+    const registrationsQuery = supabase
       .from("fda_registrations")
       .select(
         `
         *,
         companies (name),
         agent_assignments (
-          assignment_date,
-          expiry_date,
-          status,
-          us_agents (
-            agent_name,
-            email
-          )
+          us_agent_id,
+          us_agents (agent_name, email, phone)
         )
       `,
       )
-      .order("created_at", { ascending: false })
+      .order("renewal_date", { ascending: true })
 
-    console.log("[v0] FDA registrations loaded:", registrationsData)
-    console.log("[v0] FDA registrations error:", error)
+    if (currentRole !== "system_admin" && userCompanyId) {
+      const { data: userFacilities } = await supabase.from("facilities").select("id").eq("company_id", userCompanyId)
 
-    if (registrationsData) {
-      const mapped = registrationsData.map((reg: any) => ({
-        ...reg,
-        company_name: reg.companies?.name,
-        agent_assignments: reg.agent_assignments || [],
-      }))
-      setRegistrations(mapped)
+      if (userFacilities && userFacilities.length > 0) {
+        const facilityIds = userFacilities.map((f) => f.id)
+        registrationsQuery.in("facility_id", facilityIds)
+      } else {
+        console.log("[v0] No facilities found for company, skipping registrations")
+        setIsLoading(false)
+        return
+      }
+    }
+
+    const { data: registrationsData, error } = await registrationsQuery
+
+    if (error) {
+      console.error("[v0] Error loading FDA registrations:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        userRole: currentRole,
+        companyId: userCompanyId,
+      })
+      toast({
+        variant: "destructive",
+        title: "Data Loading Error",
+        description: `Failed to load FDA registrations: ${error.message || "Permission denied"}`,
+      })
+    } else {
+      console.log("[v0] FDA Registrations loaded:", registrationsData?.length || 0)
+      if (registrationsData) setRegistrations(registrationsData)
     }
 
     setIsLoading(false)
-  }
-
-  const checkUserRole = async () => {
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
-      setUserRole(profile?.role || null)
-    }
   }
 
   const resetForm = () => {
@@ -234,11 +331,10 @@ export default function FDARegistrationsPage() {
   const handleOpenDialog = (registration?: FDARegistration) => {
     if (registration) {
       setEditingId(registration.id)
-      // Get active agent assignment
       const activeAssignment = registration.agent_assignments?.find((a) => a.status === "active")
       setFormData({
         ...registration,
-        us_agent_id: activeAssignment ? "" : "", // Will be handled by agent_assignments table
+        us_agent_id: activeAssignment ? activeAssignment.us_agent_id : "",
       })
     } else {
       resetForm()
@@ -279,7 +375,6 @@ export default function FDARegistrationsPage() {
       registration_years,
     } = formData
 
-    // Validation
     if (!company_id || !facility_name || !owner_operator_name || !contact_name || !contact_email || !contact_phone) {
       toast({
         variant: "destructive",
@@ -323,11 +418,9 @@ export default function FDARegistrationsPage() {
     let error
 
     if (editingId) {
-      // Update existing registration
       const result = await supabase.from("fda_registrations").update(fdaData).eq("id", editingId)
       error = result.error
     } else {
-      // Create new registration
       const result = await supabase.from("fda_registrations").insert(fdaData).select().single()
       error = result.error
       if (!error && result.data) {
@@ -345,7 +438,6 @@ export default function FDARegistrationsPage() {
       return
     }
 
-    // Create agent assignment if us_agent_id is provided
     if (us_agent_id && fdaRegistrationId && formData.registration_date && registration_years) {
       const assignmentData = {
         us_agent_id,
@@ -385,13 +477,10 @@ export default function FDARegistrationsPage() {
     const regDate = new Date(registrationDateStr)
     const regYear = regDate.getFullYear()
 
-    // FDA facility registration expires at the end of the next even year
     let expiryYear = regYear
     if (expiryYear % 2 === 1) {
-      // Odd year - expires end of next year (even year)
       expiryYear += 1
     } else {
-      // Even year - expires end of year after next
       expiryYear += 2
     }
 
@@ -490,8 +579,8 @@ export default function FDARegistrationsPage() {
                   Yêu cầu cập nhật
                 </Link>
               </Button>
-              <Button onClick={() => handleOpenDialog()} disabled={companies.length === 0}>
-                Tạo đăng ký FDA mới
+              <Button onClick={() => handleOpenDialog()} disabled={isLoading || companies.length === 0}>
+                {isLoading ? "Đang tải..." : "Tạo đăng ký FDA mới"}
               </Button>
             </>
           )}
@@ -694,7 +783,7 @@ export default function FDARegistrationsPage() {
                     ) : (
                       companies.map((company) => (
                         <SelectItem key={company.id} value={company.id}>
-                          {company.name} ({company.tax_id})
+                          {company.name} ({company.registration_number})
                         </SelectItem>
                       ))
                     )}

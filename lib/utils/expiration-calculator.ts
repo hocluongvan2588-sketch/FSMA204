@@ -5,6 +5,13 @@
 
 import { createClient } from "@/lib/supabase/server"
 
+export {
+  calculateExpiryDate,
+  getExpirationStatus,
+  canUseProductInCTE,
+  getExpirationAlertColor,
+} from "./expiration-calculator-client"
+
 export interface ExpirationCalculation {
   productionDate: Date
   shelfLifeDays: number
@@ -22,46 +29,7 @@ export interface ProductShelfLife {
 }
 
 /**
- * Calculate expiration date from production date and shelf life
- */
-export function calculateExpiryDate(productionDate: Date, shelfLifeDays: number): Date {
-  const expiry = new Date(productionDate)
-  expiry.setDate(expiry.getDate() + shelfLifeDays)
-  return expiry
-}
-
-/**
- * Get expiration status based on days until expiry
- */
-export function getExpirationStatus(expiryDate: Date): {
-  status: "good" | "monitor" | "expiring_soon" | "expired"
-  daysUntilExpiry: number
-} {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const expiry = new Date(expiryDate)
-  expiry.setHours(0, 0, 0, 0)
-
-  const daysUntilExpiry = Math.floor((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
-  let status: "good" | "monitor" | "expiring_soon" | "expired"
-
-  if (daysUntilExpiry < 0) {
-    status = "expired"
-  } else if (daysUntilExpiry <= 7) {
-    status = "expiring_soon"
-  } else if (daysUntilExpiry <= 30) {
-    status = "monitor"
-  } else {
-    status = "good"
-  }
-
-  return { status, daysUntilExpiry }
-}
-
-/**
- * Fetch product shelf life from database
+ * Fetch product shelf life from database (SERVER-ONLY)
  */
 export async function getProductShelfLife(productId: string): Promise<ProductShelfLife | null> {
   const supabase = await createClient()
@@ -86,12 +54,14 @@ export async function getProductShelfLife(productId: string): Promise<ProductShe
 }
 
 /**
- * Calculate full expiration information
+ * Calculate full expiration information (SERVER-ONLY)
  */
 export async function calculateExpirationInfo(
   productId: string,
   productionDate: Date,
 ): Promise<ExpirationCalculation | null> {
+  const { calculateExpiryDate, getExpirationStatus } = await import("./expiration-calculator-client")
+
   const shelfLife = await getProductShelfLife(productId)
 
   if (!shelfLife || !shelfLife.shelfLifeDays) {
@@ -119,19 +89,6 @@ export async function calculateExpirationInfo(
     status,
     warningMessage,
   }
-}
-
-/**
- * Validate if product can be used in CTE based on expiration
- */
-export function canUseProductInCTE(expiryDate: Date): boolean {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const expiry = new Date(expiryDate)
-  expiry.setHours(0, 0, 0, 0)
-
-  return expiry >= today
 }
 
 /**

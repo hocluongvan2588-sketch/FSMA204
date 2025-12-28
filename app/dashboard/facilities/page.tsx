@@ -9,10 +9,11 @@ import { Plus } from "lucide-react"
 export default async function FacilitiesPage({
   searchParams,
 }: {
-  searchParams: { search?: string; facility_type?: string; status?: string }
+  searchParams: Promise<{ search?: string; facility_type?: string; status?: string }>
 }) {
   const supabase = await createClient()
-  const { search, facility_type, status } = searchParams
+  const params = await searchParams
+  const { search, facility_type, status } = params
 
   const {
     data: { user },

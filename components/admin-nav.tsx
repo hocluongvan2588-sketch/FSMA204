@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { useLanguage } from "@/contexts/language-context"
 import { LanguageSwitcher } from "@/components/language-switcher"
+import { usePendingRequests } from "@/hooks/use-pending-requests"
 import {
   LayoutDashboard,
   Users,
@@ -21,9 +22,13 @@ import {
   UserCog,
   History,
   Receipt,
+  ShieldCheck,
+  Activity,
+  ClipboardCheck,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { getRoleDisplayName, isSystemAdmin } from "@/lib/auth/roles"
+import { handleSignOut } from "@/lib/auth/handle-sign-out" // Import handleSignOut
 
 interface AdminNavProps {
   user: User
@@ -35,12 +40,7 @@ export function AdminNav({ user, profile }: AdminNavProps) {
   const router = useRouter()
   const supabase = createClient()
   const { locale, t } = useLanguage()
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push("/auth/login")
-    router.refresh()
-  }
+  const { pendingCount } = usePendingRequests()
 
   const systemAdminNavigation = [
     {
@@ -62,10 +62,22 @@ export function AdminNav({ user, profile }: AdminNavProps) {
       description: locale === "vi" ? "Tổ chức" : "Organizations",
     },
     {
+      name: locale === "vi" ? "Hoạt động Admin" : "Admin Activity",
+      href: "/admin/activity",
+      icon: Activity,
+      description: locale === "vi" ? "Giám sát hành động" : "Monitor actions",
+    },
+    {
       name: locale === "vi" ? "Nhật ký hệ thống" : "System Logs",
       href: "/admin/system-logs",
       icon: FileText,
       description: locale === "vi" ? "Nhật ký kiểm toán" : "Audit trail",
+    },
+    {
+      name: locale === "vi" ? "Bảo mật" : "Security",
+      href: "/admin/security",
+      icon: ShieldCheck,
+      description: locale === "vi" ? "Xác thực 2FA" : "2FA authentication",
     },
   ]
 
@@ -87,6 +99,12 @@ export function AdminNav({ user, profile }: AdminNavProps) {
       href: "/admin/users",
       icon: Users,
       description: locale === "vi" ? "Quản lý người dùng" : "User management",
+    },
+    {
+      name: locale === "vi" ? "Bảo mật" : "Security",
+      href: "/admin/security",
+      icon: ShieldCheck,
+      description: locale === "vi" ? "Xác thực 2FA" : "2FA authentication",
     },
   ]
 
@@ -139,6 +157,17 @@ export function AdminNav({ user, profile }: AdminNavProps) {
       icon: Shield,
       description: locale === "vi" ? "Quản lý đăng ký FDA" : "FDA registration management",
     },
+    ...(isSystemAdmin(profile?.role)
+      ? [
+          {
+            name: locale === "vi" ? "Yêu cầu Cập nhật" : "Update Requests",
+            href: "/admin/facility-requests",
+            icon: ClipboardCheck,
+            description: locale === "vi" ? "Xét duyệt yêu cầu từ users" : "Review user requests",
+            badge: pendingCount > 0 ? pendingCount : undefined,
+          },
+        ]
+      : []),
     {
       name: locale === "vi" ? "US Agent" : "US Agent",
       href: "/admin/us-agents",
@@ -306,7 +335,12 @@ export function AdminNav({ user, profile }: AdminNavProps) {
               >
                 <Icon className={cn("h-5 w-5 mt-0.5 flex-shrink-0", isActive ? "text-blue-600" : "text-slate-500")} />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold">{item.name}</div>
+                  <div className="font-semibold flex items-center gap-2">
+                    {item.name}
+                    {item.badge && (
+                      <Badge className="bg-red-500 text-white text-xs px-1.5 py-0.5 h-5 min-w-5">{item.badge}</Badge>
+                    )}
+                  </div>
                   <div className="text-xs text-slate-500">{item.description}</div>
                 </div>
               </Link>

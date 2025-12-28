@@ -32,6 +32,10 @@ import { WasteDashboardWidget } from "@/components/waste-dashboard-widget"
 import { ExpirationMonitorWidget } from "@/components/expiration-monitor-widget"
 import { InventoryStockWidgetEnhanced } from "@/components/inventory-stock-widget-enhanced"
 import { AuditTrailViewer } from "@/components/audit-trail-viewer"
+import { AdminDashboardSecurityCard } from "@/components/admin-dashboard-security-card"
+import { AdminDashboardActivityCard } from "@/components/admin-dashboard-activity-card"
+import { AdminDashboardComplianceCard } from "@/components/admin-dashboard-compliance-card"
+import { AdminDashboardQuickActions } from "@/components/admin-dashboard-quick-actions"
 
 interface AdminStats {
   totalUsers: number
@@ -123,6 +127,7 @@ export default function AdminDashboard() {
     currentStorageGB: 0,
     maxStorageGB: 0,
   })
+  const [enhancedStats, setEnhancedStats] = useState<any>(null)
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -167,36 +172,42 @@ export default function AdminDashboard() {
         const isSystemAdminUser = profileData.role === "system_admin"
 
         if (isSystemAdminUser) {
-          const response = await fetch("/api/admin/stats")
-          if (!response.ok) {
-            throw new Error("Failed to fetch admin stats")
-          }
-          const adminStats = await response.json()
+          const [statsResponse, enhancedResponse] = await Promise.all([
+            fetch("/api/admin/stats"),
+            fetch("/api/admin/dashboard-stats"),
+          ])
 
-          setStats({
-            totalUsers: adminStats.totalUsers || 0,
-            totalCompanies: adminStats.totalCompanies || 0,
-            totalFacilities: adminStats.totalFacilities || 0,
-            totalProducts: adminStats.totalProducts || 0,
-            totalTLCs: adminStats.totalTLCs || 0,
-            totalCTEs: 0,
-            activeTLCs: 0,
-            expiredTLCs: 0,
-            tlcsWithCompleteCTEs: 0,
-            tlcsWithMissingKDEs: 0,
-            complianceScore: 85,
-            fdaRegisteredFacilities: 0,
-            fdaRegistrationsExpiring: 0,
-            usAgentsActive: 0,
-            usAgentsExpiring: 0,
-            operatorsCount: 0,
-            managersCount: 0,
-            recentAlertsCount: 0,
-            storageUsagePercent: 0,
-            currentStorageGB: 0,
-            maxStorageGB: 0,
-            recentUsers: adminStats.recentUsers || [], // Added recentUsers
-          })
+          if (statsResponse.ok && enhancedResponse.ok) {
+            const adminStats = await statsResponse.json()
+            const enhanced = await enhancedResponse.json()
+
+            setStats({
+              totalUsers: adminStats.totalUsers || 0,
+              totalCompanies: adminStats.totalCompanies || 0,
+              totalFacilities: adminStats.totalFacilities || 0,
+              totalProducts: adminStats.totalProducts || 0,
+              totalTLCs: adminStats.totalTLCs || 0,
+              totalCTEs: 0,
+              activeTLCs: 0,
+              expiredTLCs: 0,
+              tlcsWithCompleteCTEs: 0,
+              tlcsWithMissingKDEs: 0,
+              complianceScore: 85,
+              fdaRegisteredFacilities: 0,
+              fdaRegistrationsExpiring: 0,
+              usAgentsActive: 0,
+              usAgentsExpiring: 0,
+              operatorsCount: 0,
+              managersCount: 0,
+              recentAlertsCount: 0,
+              storageUsagePercent: 0,
+              currentStorageGB: 0,
+              maxStorageGB: 0,
+              recentUsers: adminStats.recentUsers || [], // Added recentUsers
+            })
+
+            setEnhancedStats(enhanced)
+          }
         } else {
           const companyId = profileData.company_id
 
@@ -354,6 +365,80 @@ export default function AdminDashboard() {
             <p className="font-semibold text-sm">System Admin Mode</p>
             <p className="text-xs">Đăng nhập với Company Admin để xem data nghiệp vụ chi tiết.</p>
           </div>
+        </div>
+      )}
+
+      {isSystemAdmin && enhancedStats && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <AdminDashboardSecurityCard stats={enhancedStats.security} />
+          <AdminDashboardActivityCard stats={enhancedStats.activity} />
+          <AdminDashboardComplianceCard stats={enhancedStats.compliance} />
+        </div>
+      )}
+
+      {isSystemAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Subscriptions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-muted-foreground">Đang hoạt động:</span>
+                <span className="font-semibold">{enhancedStats?.subscriptions?.active || 0}</span>
+              </div>
+              {enhancedStats?.subscriptions?.expiringSoon > 0 && (
+                <div className="flex items-center justify-between p-2 bg-orange-50 rounded-md">
+                  <span className="text-xs font-medium text-orange-700">Sắp hết hạn</span>
+                  <Badge className="bg-orange-100 text-orange-700">{enhancedStats.subscriptions.expiringSoon}</Badge>
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full mt-2 bg-transparent"
+                onClick={() => router.push("/admin/subscriptions")}
+              >
+                Quản lý gói dịch vụ
+              </Button>
+            </CardContent>
+          </Card>
+
+          <AdminDashboardQuickActions isSystemAdmin={isSystemAdmin} />
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                Sự kiện quan trọng
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {enhancedStats?.criticalEvents?.slice(0, 3).map((event: any) => (
+                  <div key={event.id} className="text-xs border-l-2 border-red-500 pl-2 py-1">
+                    <p className="font-medium">{event.action}</p>
+                    <p className="text-muted-foreground text-[10px]">{event.description}</p>
+                  </div>
+                ))}
+                {(!enhancedStats?.criticalEvents || enhancedStats.criticalEvents.length === 0) && (
+                  <p className="text-xs text-muted-foreground">Không có sự kiện quan trọng</p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full mt-2 justify-between"
+                onClick={() => router.push("/admin/system-logs?severity=critical")}
+              >
+                Xem tất cả
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       )}
 

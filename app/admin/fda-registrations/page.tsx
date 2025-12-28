@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { Edit, AlertCircle, Bell } from "lucide-react"
+import { Edit, AlertCircle, Bell, ClipboardCheck } from "lucide-react"
+import Link from "next/link"
 import {
   Dialog,
   DialogContent,
@@ -20,10 +21,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
 
 interface FDARegistration {
   id: string
-  facility_id: string
+  company_id: string
+  facility_name: string
+  facility_address: string
+  facility_city: string
+  facility_state: string
+  facility_zip_code: string
+  facility_country: string
+  owner_operator_name: string
   fda_registration_number: string | null
   registration_status: string
   registration_date: string | null
@@ -41,26 +50,25 @@ interface FDARegistration {
   next_inspection_date: string | null
   notification_enabled: boolean
   notification_days_before: number
-  agent_registration_date?: string | null
-  agent_expiry_date?: string | null
-  registration_years?: number | null
   created_at: string
   updated_at: string
-  facility_name?: string
-  facility_code?: string
-  facility_type?: string
-  facility_address?: string
-  agent_name?: string
-  agent_email?: string
+  company_name?: string
+  agent_assignments?: {
+    us_agents?: {
+      agent_name: string
+      email: string
+    }
+    assignment_date: string
+    expiry_date: string
+    status: string
+  }[]
 }
 
-interface Facility {
+interface Company {
   id: string
   name: string
-  facility_type: string
-  location_code: string
-  address: string
-  company_id: string
+  tax_id: string
+  email: string | null
 }
 
 interface USAgent {
@@ -68,13 +76,12 @@ interface USAgent {
   agent_name: string
   email: string
   phone: string
-  company_id: string
 }
 
 export default function FDARegistrationsPage() {
   const { toast } = useToast()
   const [registrations, setRegistrations] = useState<FDARegistration[]>([])
-  const [facilities, setFacilities] = useState<Facility[]>([])
+  const [companies, setCompanies] = useState<Company[]>([])
   const [usAgents, setUsAgents] = useState<USAgent[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showDialog, setShowDialog] = useState(false)
@@ -82,8 +89,17 @@ export default function FDARegistrationsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
 
-  const [formData, setFormData] = useState<Partial<FDARegistration>>({
-    facility_id: "",
+  const [formData, setFormData] = useState<
+    Partial<FDARegistration & { us_agent_id?: string; registration_years?: number }>
+  >({
+    company_id: "",
+    facility_name: "",
+    facility_address: "",
+    facility_city: "",
+    facility_state: "",
+    facility_zip_code: "",
+    facility_country: "Vietnam",
+    owner_operator_name: "",
     fda_registration_number: "",
     registration_status: "pending",
     registration_date: "",
@@ -99,8 +115,6 @@ export default function FDARegistrationsPage() {
     next_inspection_date: "",
     notification_enabled: true,
     notification_days_before: 30,
-    agent_registration_date: "",
-    agent_expiry_date: "",
     us_agent_id: "",
     registration_years: 2,
   })
@@ -114,49 +128,50 @@ export default function FDARegistrationsPage() {
     setIsLoading(true)
     const supabase = createClient()
 
-    const { data: facilitiesData } = await supabase
-      .from("facilities")
-      .select("id, name, facility_type, location_code, address, company_id")
-      .order("name")
+    // Fetch companies
+    const { data: companiesData } = await supabase.from("companies").select("id, name, tax_id, email").order("name")
 
-    if (facilitiesData) setFacilities(facilitiesData)
+    console.log("[v0] Companies loaded:", companiesData)
+    if (companiesData) setCompanies(companiesData)
 
+    // Fetch US agents (no company_id filter needed - agents are independent)
     const { data: usAgentsData } = await supabase
       .from("us_agents")
-      .select("id, agent_name, email, phone, company_id")
+      .select("id, agent_name, email, phone")
+      .eq("is_active", true)
       .order("agent_name")
 
+    console.log("[v0] US Agents loaded:", usAgentsData)
     if (usAgentsData) setUsAgents(usAgentsData)
 
-    const { data: registrationsData } = await supabase
+    // Fetch FDA registrations with company and agent assignment info
+    const { data: registrationsData, error } = await supabase
       .from("fda_registrations")
       .select(
         `
         *,
-        facilities (
-          name,
-          location_code,
-          facility_type,
-          address,
-          company_id
-        ),
-        us_agents (
-          agent_name,
-          email
+        companies (name),
+        agent_assignments (
+          assignment_date,
+          expiry_date,
+          status,
+          us_agents (
+            agent_name,
+            email
+          )
         )
       `,
       )
       .order("created_at", { ascending: false })
 
+    console.log("[v0] FDA registrations loaded:", registrationsData)
+    console.log("[v0] FDA registrations error:", error)
+
     if (registrationsData) {
       const mapped = registrationsData.map((reg: any) => ({
         ...reg,
-        facility_name: reg.facilities?.name,
-        facility_code: reg.facilities?.location_code,
-        facility_type: reg.facilities?.facility_type,
-        facility_address: reg.facilities?.address,
-        agent_name: reg.us_agents?.agent_name,
-        agent_email: reg.us_agents?.email,
+        company_name: reg.companies?.name,
+        agent_assignments: reg.agent_assignments || [],
       }))
       setRegistrations(mapped)
     }
@@ -177,7 +192,14 @@ export default function FDARegistrationsPage() {
 
   const resetForm = () => {
     setFormData({
-      facility_id: "",
+      company_id: "",
+      facility_name: "",
+      facility_address: "",
+      facility_city: "",
+      facility_state: "",
+      facility_zip_code: "",
+      facility_country: "Vietnam",
+      owner_operator_name: "",
       fda_registration_number: "",
       registration_status: "pending",
       registration_date: "",
@@ -193,20 +215,30 @@ export default function FDARegistrationsPage() {
       next_inspection_date: "",
       notification_enabled: true,
       notification_days_before: 30,
-      agent_registration_date: "",
-      agent_expiry_date: "",
       us_agent_id: "",
       registration_years: 2,
     })
     setEditingId(null)
   }
 
+  const handleCompanyChange = (companyId: string) => {
+    const selectedCompany = companies.find((c) => c.id === companyId)
+    setFormData({
+      ...formData,
+      company_id: companyId,
+      owner_operator_name: selectedCompany?.name || "",
+      contact_email: selectedCompany?.email || formData.contact_email,
+    })
+  }
+
   const handleOpenDialog = (registration?: FDARegistration) => {
     if (registration) {
       setEditingId(registration.id)
+      // Get active agent assignment
+      const activeAssignment = registration.agent_assignments?.find((a) => a.status === "active")
       setFormData({
         ...registration,
-        us_agent_id: registration.us_agents?.id || "",
+        us_agent_id: activeAssignment ? "" : "", // Will be handled by agent_assignments table
       })
     } else {
       resetForm()
@@ -215,39 +247,19 @@ export default function FDARegistrationsPage() {
   }
 
   const handleEdit = (registration: FDARegistration) => {
-    setEditingId(registration.id)
-    if (registration) {
-      setFormData({
-        facility_id: registration.facility_id || "",
-        fda_registration_number: registration.fda_registration_number || "",
-        registration_status: registration.registration_status || "active",
-        registration_date: registration.registration_date || "",
-        expiry_date: registration.expiry_date || "",
-        renewal_date: registration.renewal_date || "",
-        fei_number: registration.fei_number || "",
-        duns_number: registration.duns_number || "",
-        contact_name: registration.contact_name || "",
-        contact_email: registration.contact_email || "",
-        contact_phone: registration.contact_phone || "",
-        notes: registration.notes || "",
-        last_inspection_date: registration.last_inspection_date || "",
-        next_inspection_date: registration.next_inspection_date || "",
-        notification_enabled: registration.notification_enabled ?? true,
-        notification_days_before: registration.notification_days_before || 30,
-        agent_registration_date: registration.agent_registration_date || "",
-        agent_expiry_date: registration.agent_expiry_date || "",
-        us_agent_id: registration.us_agents?.id || "",
-        registration_years: registration.agent_registration_years || 1,
-      })
-    } else {
-      resetForm()
-    }
-    setShowDialog(true)
+    handleOpenDialog(registration)
   }
 
   const handleSave = async () => {
     const {
-      facility_id,
+      company_id,
+      facility_name,
+      facility_address,
+      facility_city,
+      facility_state,
+      facility_zip_code,
+      facility_country,
+      owner_operator_name,
       fda_registration_number,
       registration_status,
       registration_date,
@@ -263,17 +275,16 @@ export default function FDARegistrationsPage() {
       next_inspection_date,
       notification_enabled,
       notification_days_before,
-      agent_registration_date,
-      agent_expiry_date,
       us_agent_id,
       registration_years,
     } = formData
 
-    if (!facility_id || !contact_name || !contact_email || !contact_phone) {
+    // Validation
+    if (!company_id || !facility_name || !owner_operator_name || !contact_name || !contact_email || !contact_phone) {
       toast({
         variant: "destructive",
         title: "Lỗi xác thực",
-        description: "Vui lòng điền đầy đủ thông tin bắt buộc",
+        description: "Vui lòng điền đầy đủ thông tin bắt buộc (công ty, tên cơ sở, tên chủ sở hữu, thông tin liên hệ)",
       })
       return
     }
@@ -281,8 +292,15 @@ export default function FDARegistrationsPage() {
     setIsSaving(true)
     const supabase = createClient()
 
-    const data = {
-      facility_id,
+    const fdaData = {
+      company_id,
+      facility_name,
+      facility_address: facility_address || null,
+      facility_city: facility_city || null,
+      facility_state: facility_state || null,
+      facility_zip_code: facility_zip_code || null,
+      facility_country: facility_country || "Vietnam",
+      owner_operator_name,
       fda_registration_number: fda_registration_number || null,
       registration_status,
       registration_date: registration_date || null,
@@ -298,20 +316,23 @@ export default function FDARegistrationsPage() {
       next_inspection_date: next_inspection_date || null,
       notification_enabled,
       notification_days_before,
-      agent_registration_date: agent_registration_date || null,
-      agent_expiry_date: agent_expiry_date || null,
-      us_agent_id: us_agent_id || null,
       updated_at: new Date().toISOString(),
     }
 
+    let fdaRegistrationId = editingId
     let error
 
     if (editingId) {
-      const result = await supabase.from("fda_registrations").update(data).eq("id", editingId)
+      // Update existing registration
+      const result = await supabase.from("fda_registrations").update(fdaData).eq("id", editingId)
       error = result.error
     } else {
-      const result = await supabase.from("fda_registrations").insert(data)
+      // Create new registration
+      const result = await supabase.from("fda_registrations").insert(fdaData).select().single()
       error = result.error
+      if (!error && result.data) {
+        fdaRegistrationId = result.data.id
+      }
     }
 
     if (error) {
@@ -324,6 +345,30 @@ export default function FDARegistrationsPage() {
       return
     }
 
+    // Create agent assignment if us_agent_id is provided
+    if (us_agent_id && fdaRegistrationId && formData.registration_date && registration_years) {
+      const assignmentData = {
+        us_agent_id,
+        company_id,
+        fda_registration_id: fdaRegistrationId,
+        assignment_date: formData.registration_date,
+        assignment_years: registration_years,
+        expiry_date: calculateAgentExpiryDate(formData.registration_date, registration_years),
+        status: "active",
+      }
+
+      const { error: assignmentError } = await supabase.from("agent_assignments").insert(assignmentData)
+
+      if (assignmentError) {
+        console.error("[v0] Error creating agent assignment:", assignmentError)
+        toast({
+          variant: "destructive",
+          title: "Cảnh báo",
+          description: "Đăng ký FDA thành công nhưng không thể gán US Agent. Vui lòng gán thủ công sau.",
+        })
+      }
+    }
+
     toast({
       title: editingId ? "Cập nhật thành công" : "Tạo đăng ký FDA thành công",
       description: editingId ? "Thông tin đăng ký đã được cập nhật" : "Đã thêm đăng ký FDA mới",
@@ -334,6 +379,38 @@ export default function FDARegistrationsPage() {
     loadData()
     setIsSaving(false)
   }
+
+  const calculateFdaExpiryDate = (registrationDateStr: string) => {
+    if (!registrationDateStr) return ""
+    const regDate = new Date(registrationDateStr)
+    const regYear = regDate.getFullYear()
+
+    // FDA facility registration expires at the end of the next even year
+    let expiryYear = regYear
+    if (expiryYear % 2 === 1) {
+      // Odd year - expires end of next year (even year)
+      expiryYear += 1
+    } else {
+      // Even year - expires end of year after next
+      expiryYear += 2
+    }
+
+    return `${expiryYear}-12-31`
+  }
+
+  const calculateAgentExpiryDate = (registrationDate: string, years: number) => {
+    if (!registrationDate || !years) return ""
+    const date = new Date(registrationDate)
+    date.setFullYear(date.getFullYear() + years)
+    return date.toISOString().split("T")[0]
+  }
+
+  useEffect(() => {
+    if (formData.registration_date) {
+      const newExpiryDate = calculateFdaExpiryDate(formData.registration_date)
+      setFormData((prev) => ({ ...prev, expiry_date: newExpiryDate }))
+    }
+  }, [formData.registration_date])
 
   const getStatusBadge = (status: string) => {
     const config: Record<string, { label: string; className: string }> = {
@@ -380,45 +457,6 @@ export default function FDARegistrationsPage() {
     return days !== null && days < 0
   })
 
-  const calculateFdaExpiryDate = (registrationDateStr: string) => {
-    if (!registrationDateStr) return ""
-    const regDate = new Date(registrationDateStr)
-    const regYear = regDate.getFullYear()
-
-    // FDA facility registration expires at the end of the next even year
-    let expiryYear = regYear
-    if (expiryYear % 2 === 1) {
-      // Odd year - expires end of next year (even year)
-      expiryYear += 1
-    } else {
-      // Even year - expires end of year after next
-      expiryYear += 2
-    }
-
-    return `${expiryYear}-12-31`
-  }
-
-  const calculateAgentExpiryDate = (registrationDate: string, years: number) => {
-    if (!registrationDate || !years) return ""
-    const date = new Date(registrationDate)
-    date.setFullYear(date.getFullYear() + years)
-    return date.toISOString().split("T")[0]
-  }
-
-  useEffect(() => {
-    if (formData.registration_date) {
-      const newExpiryDate = calculateFdaExpiryDate(formData.registration_date)
-      setFormData((prev) => ({ ...prev, expiry_date: newExpiryDate }))
-    }
-  }, [formData.registration_date])
-
-  useEffect(() => {
-    if (formData.agent_registration_date && formData.registration_years) {
-      const newAgentExpiryDate = calculateAgentExpiryDate(formData.agent_registration_date, formData.registration_years)
-      setFormData((prev) => ({ ...prev, agent_expiry_date: newAgentExpiryDate }))
-    }
-  }, [formData.agent_registration_date, formData.registration_years])
-
   const isSystemAdmin = userRole === "system_admin"
 
   if (isLoading) {
@@ -439,11 +477,25 @@ export default function FDARegistrationsPage() {
           <h1 className="text-3xl font-bold">Quản lý đăng ký FDA</h1>
           <p className="text-muted-foreground">
             {isSystemAdmin
-              ? "Tạo và quản lý đăng ký FDA cho các cơ sở của người dùng"
+              ? "Tạo và quản lý đăng ký FDA cho các công ty"
               : "Xem danh sách đăng ký FDA (chỉ System Admin có thể tạo mới)"}
           </p>
         </div>
-        {isSystemAdmin && <Button onClick={() => handleOpenDialog()}>Tạo đăng ký FDA mới</Button>}
+        <div className="flex gap-2">
+          {isSystemAdmin && (
+            <>
+              <Button variant="outline" asChild>
+                <Link href="/admin/facility-requests">
+                  <ClipboardCheck className="h-4 w-4 mr-2" />
+                  Yêu cầu cập nhật
+                </Link>
+              </Button>
+              <Button onClick={() => handleOpenDialog()} disabled={companies.length === 0}>
+                Tạo đăng ký FDA mới
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {!isSystemAdmin && (
@@ -520,130 +572,219 @@ export default function FDARegistrationsPage() {
           <CardTitle>Danh sách đăng ký FDA ({registrations.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cơ sở</TableHead>
-                <TableHead>Mã Cơ sở</TableHead>
-                <TableHead>Số đăng ký FDA</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead>Ngày hết hạn FDA</TableHead>
-                <TableHead>Đại diện Mỹ</TableHead>
-                <TableHead>Ngày hết hạn Agent</TableHead>
-                <TableHead>Hành động</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {registrations.map((reg) => {
-                const warning = getExpiryWarning(reg.expiry_date, reg.notification_days_before)
-                const agentWarning = reg.agent_expiry_date
-                  ? getExpiryWarning(reg.agent_expiry_date, reg.notification_days_before)
-                  : null
-                return (
-                  <TableRow key={reg.id}>
-                    <TableCell className="font-medium">
-                      <div>{reg.facility_name}</div>
-                      <div className="text-xs text-muted-foreground">{reg.facility_address}</div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{reg.facility_code}</Badge>
-                    </TableCell>
-                    <TableCell>{reg.fda_registration_number || "-"}</TableCell>
-                    <TableCell>
-                      <Badge className={getStatusBadge(reg.registration_status).className}>
-                        {getStatusBadge(reg.registration_status).label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {reg.expiry_date ? (
-                        <div className="flex items-center gap-2">
-                          <span>{new Date(reg.expiry_date).toLocaleDateString("vi-VN")}</span>
-                          {warning && (
-                            <Badge variant="outline" className={warning.className}>
-                              {warning.type === "expired" ? "Hết hạn" : "Sắp hết hạn"}
-                            </Badge>
-                          )}
-                        </div>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {reg.agent_name ? (
-                        <div className="text-sm">
-                          <div className="font-medium">{reg.agent_name}</div>
-                          <div className="text-muted-foreground">{reg.agent_email}</div>
-                        </div>
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">
-                          Chưa có
+          {registrations.length === 0 ? (
+            <div className="text-center py-12">
+              <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-lg font-medium mb-2">Chưa có đăng ký FDA nào</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                {isSystemAdmin
+                  ? "Tạo đăng ký FDA đầu tiên bằng cách nhấn nút 'Tạo đăng ký FDA mới'"
+                  : "Liên hệ System Admin để tạo đăng ký FDA cho công ty của bạn"}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Công ty</TableHead>
+                  <TableHead>Cơ sở</TableHead>
+                  <TableHead>Số đăng ký FDA</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead>Ngày hết hạn FDA</TableHead>
+                  <TableHead>Đại diện Mỹ</TableHead>
+                  <TableHead>Hành động</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {registrations.map((reg) => {
+                  const warning = getExpiryWarning(reg.expiry_date, reg.notification_days_before)
+                  const activeAgent = reg.agent_assignments?.find((a) => a.status === "active")
+                  const agentWarning = activeAgent
+                    ? getExpiryWarning(activeAgent.expiry_date, reg.notification_days_before)
+                    : null
+
+                  return (
+                    <TableRow key={reg.id}>
+                      <TableCell className="font-medium">
+                        <div>{reg.company_name}</div>
+                        <div className="text-xs text-muted-foreground">{reg.owner_operator_name}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{reg.facility_name}</div>
+                        <div className="text-xs text-muted-foreground">{reg.facility_address}</div>
+                      </TableCell>
+                      <TableCell>{reg.fda_registration_number || "-"}</TableCell>
+                      <TableCell>
+                        <Badge className={getStatusBadge(reg.registration_status).className}>
+                          {getStatusBadge(reg.registration_status).label}
                         </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {reg.agent_expiry_date ? (
-                        <div className="flex items-center gap-2">
-                          <span>{new Date(reg.agent_expiry_date).toLocaleDateString("vi-VN")}</span>
-                          {agentWarning && (
-                            <Badge variant="outline" className={agentWarning.className}>
-                              {agentWarning.type === "expired" ? "⚠️ Hết hạn" : "⏰ Sắp hết"}
-                            </Badge>
-                          )}
-                        </div>
-                      ) : (
-                        <Badge variant="destructive" className="text-xs">
-                          ⚠️ Chưa đăng ký
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {isSystemAdmin ? (
-                        <Button variant="outline" size="sm" onClick={() => handleEdit(reg)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Chỉ xem</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                      <TableCell>
+                        {reg.expiry_date ? (
+                          <div className="flex items-center gap-2">
+                            <span>{new Date(reg.expiry_date).toLocaleDateString("vi-VN")}</span>
+                            {warning && (
+                              <Badge variant="outline" className={warning.className}>
+                                {warning.type === "expired" ? "Hết hạn" : "Sắp hết hạn"}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {activeAgent ? (
+                          <div className="text-sm">
+                            <div className="font-medium">{activeAgent.us_agents?.agent_name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Hết hạn: {new Date(activeAgent.expiry_date).toLocaleDateString("vi-VN")}
+                            </div>
+                            {agentWarning && (
+                              <Badge variant="outline" className={agentWarning.className}>
+                                {agentWarning.type === "expired" ? "Agent hết hạn" : "Agent sắp hết hạn"}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Chưa gán</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isSystemAdmin && (
+                          <Button variant="ghost" size="sm" onClick={() => handleEdit(reg)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Chỉnh sửa đăng ký FDA" : "Thêm đăng ký FDA mới"}</DialogTitle>
             <DialogDescription>
-              {editingId ? "Cập nhật thông tin đăng ký FDA" : "Chọn cơ sở và nhập thông tin đăng ký FDA"}
+              {editingId ? "Cập nhật thông tin đăng ký FDA" : "Chọn công ty và nhập thông tin cơ sở để đăng ký FDA"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Cơ sở *</Label>
-              <Select
-                value={formData.facility_id}
-                onValueChange={(value) => setFormData({ ...formData, facility_id: value })}
-                disabled={!!editingId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn cơ sở" />
-                </SelectTrigger>
-                <SelectContent>
-                  {facilities.map((facility) => (
-                    <SelectItem key={facility.id} value={facility.id}>
-                      {facility.name} ({facility.location_code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-6">
+            {/* Company Selection */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Thông tin công ty</h3>
+              <div className="space-y-2">
+                <Label>Công ty *</Label>
+                <Select value={formData.company_id} onValueChange={handleCompanyChange} disabled={!!editingId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={companies.length === 0 ? "Chưa có công ty nào" : "Chọn công ty"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        <p className="font-medium mb-2">Chưa có công ty nào trong hệ thống</p>
+                        <p className="text-xs">System Admin cần tạo công ty tại trang "Companies" trước</p>
+                      </div>
+                    ) : (
+                      companies.map((company) => (
+                        <SelectItem key={company.id} value={company.id}>
+                          {company.name} ({company.tax_id})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Chọn công ty cần đăng ký FDA. Tên công ty sẽ tự động điền vào "Tên chủ sở hữu".
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Tên chủ sở hữu / Owner Operator Name *</Label>
+                <Input
+                  value={formData.owner_operator_name || ""}
+                  onChange={(e) => setFormData({ ...formData, owner_operator_name: e.target.value })}
+                  placeholder="Tên pháp lý của công ty"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Tên công ty được đăng ký với FDA (thường trùng với tên công ty)
+                </p>
+              </div>
             </div>
 
-            <Separator className="my-6" />
+            <Separator />
+
+            {/* Facility Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Thông tin cơ sở FDA</h3>
+              <p className="text-sm text-muted-foreground">
+                Nhập thông tin cơ sở sản xuất/chế biến sẽ được đăng ký với FDA
+              </p>
+
+              <div className="space-y-2">
+                <Label>Tên cơ sở *</Label>
+                <Input
+                  value={formData.facility_name || ""}
+                  onChange={(e) => setFormData({ ...formData, facility_name: e.target.value })}
+                  placeholder="VD: Nhà máy sản xuất VNTEETH"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Địa chỉ</Label>
+                  <Input
+                    value={formData.facility_address || ""}
+                    onChange={(e) => setFormData({ ...formData, facility_address: e.target.value })}
+                    placeholder="Số nhà, đường"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Thành phố</Label>
+                  <Input
+                    value={formData.facility_city || ""}
+                    onChange={(e) => setFormData({ ...formData, facility_city: e.target.value })}
+                    placeholder="VD: Hà Nội"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Tỉnh/Thành phố</Label>
+                  <Input
+                    value={formData.facility_state || ""}
+                    onChange={(e) => setFormData({ ...formData, facility_state: e.target.value })}
+                    placeholder="VD: Hà Nội"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Mã bưu điện</Label>
+                  <Input
+                    value={formData.facility_zip_code || ""}
+                    onChange={(e) => setFormData({ ...formData, facility_zip_code: e.target.value })}
+                    placeholder="VD: 100000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Quốc gia</Label>
+                  <Input
+                    value={formData.facility_country || "Vietnam"}
+                    onChange={(e) => setFormData({ ...formData, facility_country: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* FDA Registration Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">1. Đăng ký cơ sở với FDA</h3>
               <p className="text-sm text-muted-foreground">
@@ -717,10 +858,14 @@ export default function FDARegistrationsPage() {
               </div>
             </div>
 
-            <Separator className="my-6" />
+            <Separator />
+
+            {/* US Agent Assignment */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">2. Đăng ký cơ sở với US Agent</h3>
-              <p className="text-sm text-muted-foreground">Chọn US Agent và số năm đăng ký (thông thường 1-5 năm)</p>
+              <h3 className="text-lg font-semibold">2. Gán US Agent (Tùy chọn)</h3>
+              <p className="text-sm text-muted-foreground">
+                Chọn US Agent và số năm hợp đồng. US Agent có thể được gán sau.
+              </p>
 
               <div className="space-y-2">
                 <Label>US Agent</Label>
@@ -732,7 +877,7 @@ export default function FDARegistrationsPage() {
                     <SelectValue placeholder="Chọn US Agent" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Không chọn</SelectItem>
+                    <SelectItem value="none">Không chọn (gán sau)</SelectItem>
                     {usAgents.map((agent) => (
                       <SelectItem key={agent.id} value={agent.id}>
                         {agent.agent_name} ({agent.email})
@@ -741,47 +886,51 @@ export default function FDARegistrationsPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Chọn US Agent để gán cho đăng ký FDA này. Có thể cập nhật sau.
+                  US Agent là bắt buộc cho FDA registration. Có thể gán bây giờ hoặc sau.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Ngày đăng ký với Agent</Label>
-                  <Input
-                    type="date"
-                    value={formData.agent_registration_date || ""}
-                    onChange={(e) => setFormData({ ...formData, agent_registration_date: e.target.value })}
-                  />
+              {formData.us_agent_id && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Số năm hợp đồng Agent</Label>
+                    <Select
+                      value={String(formData.registration_years || 2)}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, registration_years: Number.parseInt(value) })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 năm</SelectItem>
+                        <SelectItem value="2">2 năm</SelectItem>
+                        <SelectItem value="3">3 năm</SelectItem>
+                        <SelectItem value="5">5 năm</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Ngày hết hạn Agent</Label>
+                    <Input
+                      type="date"
+                      value={
+                        formData.registration_date && formData.registration_years
+                          ? calculateAgentExpiryDate(formData.registration_date, formData.registration_years)
+                          : ""
+                      }
+                      disabled
+                      className="bg-muted"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Số năm đăng ký Agent</Label>
-                  <Select
-                    value={String(formData.registration_years || 2)}
-                    onValueChange={(value) => setFormData({ ...formData, registration_years: Number.parseInt(value) })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 năm</SelectItem>
-                      <SelectItem value="2">2 năm</SelectItem>
-                      <SelectItem value="3">3 năm</SelectItem>
-                      <SelectItem value="5">5 năm</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Thời hạn đăng ký với Agent (thông thường là 2 năm)</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Ngày hết hạn đăng ký Agent</Label>
-                <Input type="date" value={formData.agent_expiry_date || ""} disabled className="bg-muted" />
-                <p className="text-xs text-muted-foreground">Tự động tính từ ngày đăng ký + số năm</p>
-              </div>
+              )}
             </div>
 
-            <Separator className="my-6" />
+            <Separator />
+
+            {/* Contact Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">3. Thông tin liên hệ</h3>
 
@@ -816,10 +965,11 @@ export default function FDARegistrationsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Ghi chú</Label>
-                  <Input
+                  <Textarea
                     value={formData.notes || ""}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     placeholder="Ghi chú bổ sung (tùy chọn)"
+                    rows={3}
                   />
                 </div>
               </div>
@@ -830,7 +980,7 @@ export default function FDARegistrationsPage() {
             <Button variant="outline" onClick={() => setShowDialog(false)} disabled={isSaving}>
               Hủy
             </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSave} disabled={isSaving || companies.length === 0}>
               {isSaving ? "Đang lưu..." : editingId ? "Cập nhật" : "Tạo mới"}
             </Button>
           </DialogFooter>

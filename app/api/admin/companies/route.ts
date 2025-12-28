@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/service-role"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { logAdminAction } from "@/lib/utils/admin-audit-logger"
 
 export async function GET() {
   try {
@@ -82,6 +83,20 @@ export async function POST(request: Request) {
       console.error("[v0] Error creating company:", error)
       return NextResponse.json({ error: error.message || "Failed to create company" }, { status: 500 })
     }
+
+    await logAdminAction({
+      action: "company_create",
+      targetCompanyId: company.id,
+      description: `Created new company: ${name} (${registration_number})`,
+      metadata: {
+        company_name: name,
+        company_email: email,
+        company_phone: phone,
+        registration_number,
+        company_address: address,
+      },
+      severity: "high",
+    })
 
     return NextResponse.json(company)
   } catch (error: any) {

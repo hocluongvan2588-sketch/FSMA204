@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
 import { checkUserQuota } from "@/lib/quota"
 import { incrementUserCount, decrementUserCount } from "@/lib/usage-tracker"
+import { logAdminAction } from "@/lib/utils/admin-audit-logger"
 
 interface CreateUserInput {
   email: string
@@ -261,6 +262,24 @@ export async function createUser(input: CreateUserInput) {
     }
 
     console.log("[v0] Profile updated successfully")
+
+    await logAdminAction({
+      action: "user_create",
+      targetUserId: authData.user.id,
+      targetCompanyId: input.companyId || undefined,
+      description: `Created new user: ${input.fullName} (${input.email}) with role: ${input.role}`,
+      metadata: {
+        user_email: input.email,
+        user_name: input.fullName,
+        user_role: input.role,
+        company_id: input.companyId,
+        company_name: input.companyName,
+        phone: input.phone,
+        organization_type: input.organizationType,
+      },
+      severity: input.role === "admin" || input.role === "system_admin" ? "high" : "medium",
+    })
+
     revalidatePath("/admin/users")
     revalidatePath("/admin/companies")
     revalidatePath("/admin")
@@ -451,6 +470,19 @@ export async function deleteUser(userId: string) {
         error: `Lỗi khởi tạo admin client: ${adminError.message}`,
       }
     }
+
+    await logAdminAction({
+      action: "user_delete",
+      targetUserId: userId,
+      targetCompanyId: userProfile?.company_id || undefined,
+      description: `Deleted user: ${userId} with role: ${userProfile?.role}`,
+      metadata: {
+        deleted_user_id: userId,
+        deleted_user_role: userProfile?.role,
+        deleted_user_company: userProfile?.company_id,
+      },
+      severity: "critical",
+    })
 
     const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(userId)
 

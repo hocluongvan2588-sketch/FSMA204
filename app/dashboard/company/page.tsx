@@ -47,9 +47,12 @@ export default async function CompanyPage() {
             <p className="text-slate-500 mb-6 text-center max-w-md">
               Bạn chưa được gán vào công ty nào. Vui lòng liên hệ quản trị viên để được hỗ trợ.
             </p>
-            <Button asChild>
-              <Link href="/dashboard/company/create">Tạo công ty mới</Link>
-            </Button>
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg max-w-md">
+              <p className="text-sm">
+                <strong>Lưu ý:</strong> Chỉ System Admin mới có thể tạo công ty. Vui lòng liên hệ admin để được thêm vào
+                công ty.
+              </p>
+            </div>
           </CardContent>
         </Card>
       ) : (

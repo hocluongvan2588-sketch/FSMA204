@@ -3,7 +3,9 @@ import { redirect } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { FacilityUpdateRequestActions } from "@/components/facility-update-request-actions"
-import { Clock, Building2, User } from "lucide-react"
+import { Clock, Building2, User, ArrowLeft } from "lucide-react"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 
 export default async function FacilityRequestsPage() {
   const supabase = await createClient()
@@ -40,9 +42,17 @@ export default async function FacilityRequestsPage() {
           <h1 className="text-3xl font-bold">Yêu cầu Cập nhật Cơ sở</h1>
           <p className="text-muted-foreground mt-1">Xét duyệt các yêu cầu thay đổi thông tin từ Admin công ty</p>
         </div>
-        <Badge variant="secondary" className="text-lg px-4 py-2">
-          {pendingRequests.length} yêu cầu
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/admin/fda-registrations">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Quay lại FDA
+            </Link>
+          </Button>
+          <Badge variant="secondary" className="text-lg px-4 py-2">
+            {pendingRequests.length} yêu cầu
+          </Badge>
+        </div>
       </div>
 
       {pendingRequests.length === 0 ? (

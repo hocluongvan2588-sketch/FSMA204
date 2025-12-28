@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/service-role"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { logAdminAction } from "@/lib/utils/admin-audit-logger"
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,6 +28,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params
 
     const serviceClient = createServiceRoleClient()
+
+    const { data: beforeCompany } = await serviceClient.from("companies").select("*").eq("id", id).single()
+
     const { data: company, error } = await serviceClient
       .from("companies")
       .update({
@@ -44,6 +48,21 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       console.error("[v0] Error updating company:", error)
       return NextResponse.json({ error: error.message || "Failed to update company" }, { status: 500 })
     }
+
+    await logAdminAction({
+      action: "company_update",
+      targetCompanyId: id,
+      description: `Updated company: ${name}`,
+      changes: {
+        before: beforeCompany || {},
+        after: { name, registration_number, email, phone, address },
+      },
+      metadata: {
+        company_name: name,
+        company_id: id,
+      },
+      severity: "medium",
+    })
 
     return NextResponse.json(company)
   } catch (error: any) {
@@ -74,6 +93,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const { id } = await params
 
     const serviceClient = createServiceRoleClient()
+
+    const { data: companyToDelete } = await serviceClient.from("companies").select("name").eq("id", id).single()
 
     // Check if company has users
     const { count: usersCount } = await serviceClient
@@ -111,6 +132,17 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       console.error("[v0] Error deleting company:", error)
       return NextResponse.json({ error: error.message || "Failed to delete company" }, { status: 500 })
     }
+
+    await logAdminAction({
+      action: "company_delete",
+      targetCompanyId: id,
+      description: `Deleted company: ${companyToDelete?.name || id}`,
+      metadata: {
+        company_name: companyToDelete?.name,
+        company_id: id,
+      },
+      severity: "critical",
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

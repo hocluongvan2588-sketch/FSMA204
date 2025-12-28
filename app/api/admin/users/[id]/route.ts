@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { createServiceRoleClient } from "@/lib/supabase/service-role"
+import { logAdminAction } from "@/lib/utils/admin-audit-logger"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -192,6 +193,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: "Cannot modify admin users" }, { status: 403 })
     }
 
+    const beforeState = {
+      full_name: targetUser.full_name,
+      role: targetUser.role,
+      phone: targetUser.phone,
+      company_id: targetUser.company_id,
+      organization_type: targetUser.organization_type,
+    }
+
     // Update profile
     const updates = {
       full_name: body.full_name,
@@ -210,6 +219,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       console.error("[v0] Update error:", updateError)
       throw new Error(updateError.message)
     }
+
+    const roleChanged = beforeState.role !== body.role
+    await logAdminAction({
+      action: roleChanged ? "user_role_change" : "user_update",
+      targetUserId: userId,
+      targetCompanyId: body.company_id,
+      description: roleChanged
+        ? `Changed user role from ${beforeState.role} to ${body.role} for user: ${body.full_name}`
+        : `Updated user profile for: ${body.full_name}`,
+      changes: {
+        before: beforeState,
+        after: updates,
+      },
+      metadata: {
+        updated_fields: Object.keys(body),
+        role_changed: roleChanged,
+        old_role: beforeState.role,
+        new_role: body.role,
+      },
+      severity: roleChanged ? "high" : "medium",
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { logAdminAction } from "@/lib/utils/admin-audit-logger"
 
 interface SubmitUpdateRequestInput {
   facility_id: string
@@ -105,7 +106,7 @@ export async function approveFacilityUpdateRequest(input: ApproveUpdateRequestIn
     // Get the update request
     const { data: request } = await supabase
       .from("facility_update_requests")
-      .select("*, facilities(id, name)")
+      .select("*, facilities(id, name, company_id)")
       .eq("id", input.request_id)
       .single()
 
@@ -149,6 +150,28 @@ export async function approveFacilityUpdateRequest(input: ApproveUpdateRequestIn
       return { error: statusError.message }
     }
 
+    await logAdminAction({
+      action: "facility_approve",
+      targetEntityId: request.facility_id,
+      targetCompanyId: request.facilities?.company_id,
+      entityType: "facility",
+      description: `Approved facility update request for: ${request.facilities?.name || request.facility_id}`,
+      metadata: {
+        request_id: input.request_id,
+        facility_name: request.facilities?.name,
+        changes_applied: input.apply_changes,
+        requested_changes: request.requested_changes,
+        requested_by: request.requested_by,
+      },
+      changes: input.apply_changes
+        ? {
+            before: {},
+            after: request.requested_changes,
+          }
+        : undefined,
+      severity: "high",
+    })
+
     // Log to system_logs
     await supabase.from("system_logs").insert({
       user_id: user.id,
@@ -191,7 +214,7 @@ export async function rejectFacilityUpdateRequest(input: RejectUpdateRequestInpu
     // Get the update request
     const { data: request } = await supabase
       .from("facility_update_requests")
-      .select("*, facilities(id, name)")
+      .select("*, facilities(id, name, company_id)")
       .eq("id", input.request_id)
       .single()
 
@@ -219,6 +242,22 @@ export async function rejectFacilityUpdateRequest(input: RejectUpdateRequestInpu
       console.error("[v0] Request status update error:", statusError)
       return { error: statusError.message }
     }
+
+    await logAdminAction({
+      action: "facility_reject",
+      targetEntityId: request.facility_id,
+      targetCompanyId: request.facilities?.company_id,
+      entityType: "facility",
+      description: `Rejected facility update request for: ${request.facilities?.name || request.facility_id}`,
+      metadata: {
+        request_id: input.request_id,
+        facility_name: request.facilities?.name,
+        rejection_note: input.rejection_note,
+        requested_changes: request.requested_changes,
+        requested_by: request.requested_by,
+      },
+      severity: "medium",
+    })
 
     // Log to system_logs
     await supabase.from("system_logs").insert({

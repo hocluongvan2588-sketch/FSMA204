@@ -18,6 +18,10 @@ export interface PlanFeatures {
   custom_branding: boolean
   priority_support: boolean
   watermark: boolean // true = has watermark (Free plan only)
+  waste_tracking: boolean
+  expiration_monitoring: boolean
+  advanced_inventory: boolean
+  audit_trail_access: boolean
 }
 
 export interface PlanConfig {
@@ -88,6 +92,10 @@ export async function getPlanConfig(planName: string): Promise<PlanConfig | null
       custom_branding: pkg.features?.custom_branding ?? false,
       priority_support: pkg.features?.priority_support ?? false,
       watermark: pkg.name === "Free",
+      waste_tracking: pkg.name !== "Free", // Available from Starter+
+      expiration_monitoring: pkg.name !== "Free", // Available from Starter+
+      advanced_inventory: ["Professional", "Business", "Enterprise"].includes(pkg.name), // Professional+
+      audit_trail_access: ["Business", "Enterprise"].includes(pkg.name), // Business+
     },
     is_featured: pkg.name === "Professional",
     display_order: pkg.display_order || 0,
@@ -150,6 +158,10 @@ export async function getAllPlanConfigs(): Promise<PlanConfig[]> {
         custom_branding: pkg.features?.custom_branding ?? false,
         priority_support: pkg.features?.priority_support ?? false,
         watermark: pkg.name === "Free",
+        waste_tracking: pkg.name !== "Free", // Available from Starter+
+        expiration_monitoring: pkg.name !== "Free", // Available from Starter+
+        advanced_inventory: ["Professional", "Business", "Enterprise"].includes(pkg.name), // Professional+
+        audit_trail_access: ["Business", "Enterprise"].includes(pkg.name), // Business+
       },
       is_featured: pkg.name === "Professional",
       display_order: pkg.display_order || 0,

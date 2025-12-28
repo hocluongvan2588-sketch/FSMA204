@@ -28,10 +28,10 @@ import { Progress } from "@/components/ui/progress"
 import { useLanguage } from "@/contexts/language-context"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import WasteDashboardWidget from "@/components/waste-dashboard-widget"
-import ExpirationMonitorWidget from "@/components/expiration-monitor-widget"
-import InventoryStockWidgetEnhanced from "@/components/inventory-stock-widget-enhanced"
-import AuditTrailViewer from "@/components/audit-trail-viewer"
+import { WasteDashboardWidget } from "@/components/waste-dashboard-widget"
+import { ExpirationMonitorWidget } from "@/components/expiration-monitor-widget"
+import { InventoryStockWidgetEnhanced } from "@/components/inventory-stock-widget-enhanced"
+import { AuditTrailViewer } from "@/components/audit-trail-viewer"
 
 interface AdminStats {
   totalUsers: number

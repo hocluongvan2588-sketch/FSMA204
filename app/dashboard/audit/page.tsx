@@ -10,20 +10,64 @@ import Link from "next/link"
 export default async function AuditLogsPage({
   searchParams,
 }: {
-  searchParams: { table?: string; operation?: string; search?: string }
+  searchParams: Promise<{ table?: string; operation?: string; search?: string }>
 }) {
   const supabase = await createClient()
+  const params = await searchParams // Await the Promise
 
-  // Get audit stats
-  const { data: stats } = await supabase.rpc("get_audit_stats", { p_days: 30 }).single()
+  // Get audit stats - calculate manually from audit_logs table
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-  // Get recent audit logs with filters
-  const { data: auditLogs } = await supabase.rpc("search_audit_logs", {
-    p_table_name: searchParams.table || null,
-    p_operation: searchParams.operation || null,
-    p_search_term: searchParams.search || null,
-    p_limit: 50,
-  })
+  const { count: totalChanges } = await supabase
+    .from("audit_logs")
+    .select("*", { count: "exact", head: true })
+    .gte("created_at", thirtyDaysAgo.toISOString())
+
+  const { count: cteChanges } = await supabase
+    .from("audit_logs")
+    .select("*", { count: "exact", head: true })
+    .eq("table_name", "critical_tracking_events")
+    .gte("created_at", thirtyDaysAgo.toISOString())
+
+  const { count: tlcChanges } = await supabase
+    .from("audit_logs")
+    .select("*", { count: "exact", head: true })
+    .eq("table_name", "traceability_lots")
+    .gte("created_at", thirtyDaysAgo.toISOString())
+
+  // Critical changes: CTEs + KDEs
+  const { count: criticalChanges } = await supabase
+    .from("audit_logs")
+    .select("*", { count: "exact", head: true })
+    .in("table_name", ["critical_tracking_events", "key_data_elements"])
+    .gte("created_at", thirtyDaysAgo.toISOString())
+
+  const stats = {
+    total_changes: totalChanges || 0,
+    cte_changes: cteChanges || 0,
+    tlc_changes: tlcChanges || 0,
+    critical_changes: criticalChanges || 0,
+  }
+
+  // Get recent audit logs with filters - query directly instead of RPC
+  let query = supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(50)
+
+  if (params.table && params.table !== "all") {
+    query = query.eq("table_name", params.table)
+  }
+
+  if (params.operation && params.operation !== "all") {
+    query = query.eq("operation", params.operation)
+  }
+
+  if (params.search) {
+    query = query.or(
+      `table_name.ilike.%${params.search}%,user_email.ilike.%${params.search}%,compliance_reason.ilike.%${params.search}%`,
+    )
+  }
+
+  const { data: auditLogs } = await query
 
   return (
     <div className="space-y-6">
@@ -48,7 +92,7 @@ export default async function AuditLogsPage({
             <History className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.total_changes || 0}</div>
+            <div className="text-2xl font-bold">{stats.total_changes}</div>
             <p className="text-xs text-slate-500 mt-1">30 ngày qua</p>
           </CardContent>
         </Card>
@@ -59,7 +103,7 @@ export default async function AuditLogsPage({
             <Shield className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.cte_changes || 0}</div>
+            <div className="text-2xl font-bold">{stats.cte_changes}</div>
             <p className="text-xs text-slate-500 mt-1">Thay đổi CTE</p>
           </CardContent>
         </Card>
@@ -70,7 +114,7 @@ export default async function AuditLogsPage({
             <Shield className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.tlc_changes || 0}</div>
+            <div className="text-2xl font-bold">{stats.tlc_changes}</div>
             <p className="text-xs text-slate-500 mt-1">Thay đổi TLC</p>
           </CardContent>
         </Card>
@@ -81,7 +125,7 @@ export default async function AuditLogsPage({
             <AlertCircle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.critical_changes || 0}</div>
+            <div className="text-2xl font-bold">{stats.critical_changes}</div>
             <p className="text-xs text-slate-500 mt-1">Thay đổi quan trọng</p>
           </CardContent>
         </Card>
@@ -94,8 +138,8 @@ export default async function AuditLogsPage({
         </CardHeader>
         <CardContent>
           <form className="grid gap-4 md:grid-cols-4">
-            <Input name="search" placeholder="Tìm kiếm..." defaultValue={searchParams.search} />
-            <Select name="table" defaultValue={searchParams.table}>
+            <Input name="search" placeholder="Tìm kiếm..." defaultValue={params.search} />
+            <Select name="table" defaultValue={params.table}>
               <SelectTrigger>
                 <SelectValue placeholder="Tất cả bảng" />
               </SelectTrigger>
@@ -108,7 +152,7 @@ export default async function AuditLogsPage({
                 <SelectItem value="products">Products</SelectItem>
               </SelectContent>
             </Select>
-            <Select name="operation" defaultValue={searchParams.operation}>
+            <Select name="operation" defaultValue={params.operation}>
               <SelectTrigger>
                 <SelectValue placeholder="Tất cả thao tác" />
               </SelectTrigger>
@@ -157,10 +201,10 @@ export default async function AuditLogsPage({
                           {log.operation}
                         </Badge>
                         <span className="text-sm font-medium text-slate-700">{log.table_name}</span>
-                        <span className="text-xs text-slate-400">#{log.record_id.slice(0, 8)}</span>
+                        <span className="text-xs text-slate-400">#{log.record_id?.slice(0, 8) || "N/A"}</span>
                       </div>
                       <p className="text-sm text-slate-600 mb-1">
-                        Bởi: <span className="font-medium">{log.user_email}</span>
+                        Bởi: <span className="font-medium">{log.user_email || "System"}</span>
                         {log.user_role && (
                           <Badge variant="outline" className="ml-2 text-xs">
                             {log.user_role}

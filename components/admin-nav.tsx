@@ -77,6 +77,12 @@ export function AdminNav({ user, profile }: AdminNavProps) {
       description: locale === "vi" ? "Dashboard quản trị" : "Admin dashboard",
     },
     {
+      name: locale === "vi" ? "Công ty của tôi" : "My Company",
+      href: "/dashboard/company",
+      icon: Building2,
+      description: locale === "vi" ? "Thông tin công ty" : "Company information",
+    },
+    {
       name: locale === "vi" ? "Người dùng công ty" : "Company Users",
       href: "/admin/users",
       icon: Users,

@@ -241,9 +241,19 @@ export async function getCompanyEffectivePlan(companyId: string): Promise<PlanCo
 
 /**
  * Check if company has access to a feature
- * Checks plan config + overrides
+ * Checks plan config + overrides + ADMIN BYPASS
  */
 export async function hasFeatureAccess(companyId: string, feature: keyof PlanFeatures): Promise<boolean> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (user && (await isAdminUser(user.id))) {
+    console.log("[v0] Admin user detected - granting full access to feature:", feature)
+    return true
+  }
+
   const plan = await getCompanyEffectivePlan(companyId)
   if (!plan) return false
   return plan.features[feature]
@@ -252,12 +262,22 @@ export async function hasFeatureAccess(companyId: string, feature: keyof PlanFea
 /**
  * Check quota limit
  * Returns { allowed, current, limit, remaining }
+ * ADMIN BYPASS: Admins get unlimited quotas
  */
 export async function checkQuota(
   companyId: string,
   quotaType: keyof PlanLimits,
 ): Promise<{ allowed: boolean; current: number; limit: number; remaining: number }> {
   const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (user && (await isAdminUser(user.id))) {
+    console.log("[v0] Admin user detected - granting unlimited quota for:", quotaType)
+    return { allowed: true, current: 0, limit: -1, remaining: -1 }
+  }
+
   const plan = await getCompanyEffectivePlan(companyId)
 
   if (!plan) {
@@ -278,4 +298,22 @@ export async function checkQuota(
     limit,
     remaining: unlimited ? -1 : limit - current,
   }
+}
+
+/**
+ * Check if user is system admin or company admin
+ * Admins have FULL ACCESS to all features, bypassing plan restrictions
+ */
+export async function isAdminUser(userId: string): Promise<boolean> {
+  const supabase = await createClient()
+
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).single()
+
+  const isAdmin = profile?.role === "system_admin" || profile?.role === "admin"
+
+  if (isAdmin) {
+    console.log("[v0] Admin bypass enabled for user:", userId, "role:", profile?.role)
+  }
+
+  return isAdmin
 }

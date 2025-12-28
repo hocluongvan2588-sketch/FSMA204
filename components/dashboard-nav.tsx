@@ -15,7 +15,6 @@ import {
   Home,
   Bell,
   Search,
-  Building2,
   Package,
   Tag,
   FileText,
@@ -48,6 +47,7 @@ export function DashboardNav({ user, profile }: DashboardNavProps) {
   }
 
   const isAdminUser = profile?.role === "admin" || profile?.role === "system_admin"
+  const isSystemAdmin = profile?.role === "system_admin"
   const orgType = profile?.organization_type
 
   const canAccessLots = (orgType: string | null) => {
@@ -76,6 +76,7 @@ export function DashboardNav({ user, profile }: DashboardNavProps) {
 
   const setupNav = [
     { name: "Sản phẩm", href: "/dashboard/products", icon: Package, dataTour: "products" },
+    { name: "Công ty", href: "/dashboard/company", icon: ShieldCheck, dataTour: "company" },
     { name: "Kho tại chỗ", href: "/dashboard/facilities", icon: Factory, dataTour: "facilities" },
     { name: "Đội ngũ Operator", href: "/dashboard/operator", icon: Users2, dataTour: undefined },
   ]
@@ -109,7 +110,6 @@ export function DashboardNav({ user, profile }: DashboardNavProps) {
 
   const adminNotificationNav = [
     { name: "Thông báo", href: "/dashboard/notifications", icon: Bell, dataTour: "notifications" },
-    { name: "Công ty", href: "/dashboard/company", icon: Building2, dataTour: "company-info" },
     { name: "Cài đặt thiết bị", href: "/dashboard/settings", icon: Settings, dataTour: undefined },
   ]
 

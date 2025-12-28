@@ -4,8 +4,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { History, Shield, TrendingUp, AlertCircle } from "lucide-react"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { History, Shield, TrendingUp, AlertCircle, Lock } from "lucide-react"
 import Link from "next/link"
+import { hasFeatureAccess } from "@/lib/plan-config"
+import { redirect } from "next/navigation"
 
 export default async function AuditLogsPage({
   searchParams,
@@ -13,7 +16,81 @@ export default async function AuditLogsPage({
   searchParams: Promise<{ table?: string; operation?: string; search?: string }>
 }) {
   const supabase = await createClient()
-  const params = await searchParams // Await the Promise
+  const params = await searchParams
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    redirect("/auth/login")
+  }
+
+  const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+
+  if (!profile?.company_id) {
+    redirect("/dashboard")
+  }
+
+  // Check if user has access to audit trail feature
+  const hasAccess = await hasFeatureAccess(profile.company_id, "audit_trail_access")
+
+  if (!hasAccess) {
+    return (
+      <div className="p-8 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Nhật ký kiểm toán</h1>
+          <p className="text-slate-500 mt-1">Theo dõi mọi thay đổi dữ liệu quan trọng trong hệ thống</p>
+        </div>
+
+        <Alert variant="default" className="border-amber-200 bg-amber-50">
+          <Lock className="h-5 w-5 text-amber-600" />
+          <AlertTitle className="text-amber-900">Tính năng nâng cao</AlertTitle>
+          <AlertDescription className="text-amber-700">
+            <p className="mb-3">
+              Nhật ký kiểm toán chi tiết là tính năng dành cho gói <strong>Business</strong> và{" "}
+              <strong>Enterprise</strong>. Tính năng này cho phép bạn:
+            </p>
+            <ul className="list-disc list-inside space-y-1 mb-4">
+              <li>Theo dõi tất cả thay đổi dữ liệu quan trọng</li>
+              <li>Xem lịch sử chỉnh sửa CTE và TLC</li>
+              <li>Xuất báo cáo kiểm toán cho FDA</li>
+              <li>Tuân thủ 21 CFR Part 11 (Electronic Records)</li>
+            </ul>
+            <Button asChild className="bg-amber-600 hover:bg-amber-700">
+              <Link href="/admin/pricing">Nâng cấp gói dịch vụ</Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+
+        {/* Show limited preview */}
+        <Card className="opacity-60 pointer-events-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5" />
+              Xem trước tính năng (Yêu cầu nâng cấp)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-4">
+              {/* Blurred preview cards */}
+              <div className="blur-sm">
+                <div className="h-24 bg-slate-100 rounded-lg"></div>
+              </div>
+              <div className="blur-sm">
+                <div className="h-24 bg-slate-100 rounded-lg"></div>
+              </div>
+              <div className="blur-sm">
+                <div className="h-24 bg-slate-100 rounded-lg"></div>
+              </div>
+              <div className="blur-sm">
+                <div className="h-24 bg-slate-100 rounded-lg"></div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   // Get audit stats - calculate manually from audit_logs table
   const thirtyDaysAgo = new Date()

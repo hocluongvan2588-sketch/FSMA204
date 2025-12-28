@@ -8,16 +8,17 @@ import { ReportsSearchFilter } from "@/components/reports-search-filter"
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: {
+  searchParams: Promise<{
     search?: string
     compliance_status?: string
     report_type?: string
     audit_date_from?: string
     audit_date_to?: string
-  }
+  }>
 }) {
   const supabase = await createClient()
-  const { search, compliance_status, report_type, audit_date_from, audit_date_to } = searchParams
+  const params = await searchParams
+  const { search, compliance_status, report_type, audit_date_from, audit_date_to } = params
 
   let query = supabase.from("audit_reports").select("*, facilities(name)")
 

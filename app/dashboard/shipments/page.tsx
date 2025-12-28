@@ -8,10 +8,11 @@ import { ShipmentsSearchFilter } from "@/components/shipments-search-filter"
 export default async function ShipmentsPage({
   searchParams,
 }: {
-  searchParams: { search?: string; status?: string; shipment_date_from?: string; shipment_date_to?: string }
+  searchParams: Promise<{ search?: string; status?: string; shipment_date_from?: string; shipment_date_to?: string }>
 }) {
   const supabase = await createClient()
-  const { search, status, shipment_date_from, shipment_date_to } = searchParams
+  const params = await searchParams
+  const { search, status, shipment_date_from, shipment_date_to } = params
 
   let query = supabase
     .from("shipments")

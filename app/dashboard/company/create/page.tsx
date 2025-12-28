@@ -1,23 +1,46 @@
 "use client"
 
 import type React from "react"
-
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ShieldAlert, ArrowLeft } from "lucide-react"
+import Link from "next/link"
 
 export default function CreateCompanyPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
   const router = useRouter()
   const supabase = createClient()
   const { toast } = useToast()
+
+  useEffect(() => {
+    checkAuthorization()
+  }, [])
+
+  const checkAuthorization = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      router.push("/auth/login")
+      return
+    }
+
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+
+    // Only system_admin can create companies
+    if (profile?.role === "system_admin") {
+      setIsAuthorized(true)
+    } else {
+      setIsAuthorized(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -81,74 +104,75 @@ export default function CreateCompanyPage() {
     }
   }
 
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">Tạo công ty mới</h1>
-        <p className="text-slate-500 mt-1">Nhập thông tin doanh nghiệp của bạn</p>
+  if (isAuthorized === null) {
+    return (
+      <div className="p-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-muted rounded w-1/4"></div>
+          <div className="h-64 bg-muted rounded"></div>
+        </div>
       </div>
+    )
+  }
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Thông tin công ty</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">
-                  Tên công ty <span className="text-red-500">*</span>
-                </Label>
-                <Input id="name" name="name" required placeholder="Công ty TNHH ABC" />
+  if (isAuthorized === false) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6 p-8">
+        <Alert variant="destructive" className="border-red-200 bg-red-50">
+          <ShieldAlert className="h-5 w-5" />
+          <AlertDescription className="ml-2">
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-lg mb-2">Quyền truy cập bị từ chối</h3>
+                <p className="text-sm text-slate-700">
+                  Chức năng tạo công ty chỉ dành cho <strong>System Administrator</strong>.
+                </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="registration_number">
-                  Mã số đăng ký kinh doanh <span className="text-red-500">*</span>
-                </Label>
-                <Input id="registration_number" name="registration_number" required placeholder="MST-0123456789" />
+              <div className="bg-white border border-red-200 rounded-lg p-4">
+                <h4 className="font-semibold text-sm mb-2">Tại sao bị hạn chế?</h4>
+                <ul className="text-sm space-y-1 text-slate-600 list-disc list-inside">
+                  <li>
+                    <strong>Tuân thủ FDA:</strong> Mỗi company cần được xác minh trước khi đăng ký FDA
+                  </li>
+                  <li>
+                    <strong>Bảo mật:</strong> Ngăn tạo company không được ủy quyền
+                  </li>
+                  <li>
+                    <strong>Audit trail:</strong> Tất cả company creations phải được ghi log bởi admin
+                  </li>
+                </ul>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="address">
-                  Địa chỉ <span className="text-red-500">*</span>
-                </Label>
-                <Textarea id="address" name="address" required placeholder="123 Đường ABC, Quận 1, TP.HCM" rows={3} />
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                <h4 className="font-semibold text-sm mb-2">Bạn cần gì?</h4>
+                <p className="text-sm text-slate-700 mb-2">Liên hệ System Administrator để:</p>
+                <ul className="text-sm space-y-1 text-slate-600 list-disc list-inside">
+                  <li>Tạo company mới cho tổ chức của bạn</li>
+                  <li>Được assign vào company hiện tại</li>
+                  <li>Yêu cầu thay đổi thông tin company</li>
+                </ul>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Số điện thoại</Label>
-                  <Input id="phone" name="phone" type="tel" placeholder="+84 28 1234 5678" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" name="email" type="email" placeholder="contact@company.vn" />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="contact_person">Người liên hệ</Label>
-                <Input id="contact_person" name="contact_person" placeholder="Nguyễn Văn A" />
+              <div className="flex gap-3 pt-2">
+                <Button variant="outline" asChild>
+                  <Link href="/dashboard">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Về Dashboard
+                  </Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/dashboard/company">Xem thông tin công ty</Link>
+                </Button>
               </div>
             </div>
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">{error}</div>
-            )}
-
-            <div className="flex gap-4 pt-4">
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Đang tạo..." : "Tạo công ty"}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => router.back()} className="bg-transparent">
-                Hủy
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  )
+  // If authorized (system_admin), redirect to admin panel
+  router.push("/admin/users")
+  return null
 }

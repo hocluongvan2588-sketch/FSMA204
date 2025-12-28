@@ -10,18 +10,21 @@ import Link from "next/link"
 export default async function AuditTrailPage({
   searchParams,
 }: {
-  searchParams: {
+  searchParams: Promise<{
     entity_type?: string
     action?: string
     date_from?: string
     date_to?: string
-  }
+  }>
 }) {
+  const params = await searchParams
+  const { entity_type, action, date_from, date_to } = params
+
   const auditTrail = await getAuditTrail({
-    entityType: searchParams.entity_type,
-    action: searchParams.action,
-    dateFrom: searchParams.date_from,
-    dateTo: searchParams.date_to,
+    entityType: entity_type,
+    action: action,
+    dateFrom: date_from,
+    dateTo: date_to,
   })
 
   const actionCounts = auditTrail.reduce(

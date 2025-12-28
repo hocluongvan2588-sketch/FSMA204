@@ -80,6 +80,7 @@ export default function FDARegistrationsPage() {
   const [showDialog, setShowDialog] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [userRole, setUserRole] = useState<string | null>(null)
 
   const [formData, setFormData] = useState<Partial<FDARegistration>>({
     facility_id: "",
@@ -106,6 +107,7 @@ export default function FDARegistrationsPage() {
 
   useEffect(() => {
     loadData()
+    checkUserRole()
   }, [])
 
   const loadData = async () => {
@@ -160,6 +162,17 @@ export default function FDARegistrationsPage() {
     }
 
     setIsLoading(false)
+  }
+
+  const checkUserRole = async () => {
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+      setUserRole(profile?.role || null)
+    }
   }
 
   const resetForm = () => {
@@ -223,7 +236,7 @@ export default function FDARegistrationsPage() {
         notification_days_before: registration.notification_days_before || 30,
         agent_registration_date: registration.agent_registration_date || "",
         agent_expiry_date: registration.agent_expiry_date || "",
-        us_agent_id: registration.us_agent_id || "",
+        us_agent_id: registration.us_agents?.id || "",
         registration_years: registration.agent_registration_years || 1,
       })
     } else {
@@ -406,6 +419,8 @@ export default function FDARegistrationsPage() {
     }
   }, [formData.agent_registration_date, formData.registration_years])
 
+  const isSystemAdmin = userRole === "system_admin"
+
   if (isLoading) {
     return (
       <div className="p-8">
@@ -422,10 +437,33 @@ export default function FDARegistrationsPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Quản lý đăng ký FDA</h1>
-          <p className="text-muted-foreground">Tạo và quản lý đăng ký FDA cho các cơ sở của người dùng</p>
+          <p className="text-muted-foreground">
+            {isSystemAdmin
+              ? "Tạo và quản lý đăng ký FDA cho các cơ sở của người dùng"
+              : "Xem danh sách đăng ký FDA (chỉ System Admin có thể tạo mới)"}
+          </p>
         </div>
-        <Button onClick={() => handleOpenDialog()}>Tạo đăng ký FDA mới</Button>
+        {isSystemAdmin && <Button onClick={() => handleOpenDialog()}>Tạo đăng ký FDA mới</Button>}
       </div>
+
+      {!isSystemAdmin && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg flex items-start gap-3">
+          <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div>
+            <p className="font-semibold">Chế độ xem (View Only)</p>
+            <p className="text-sm">
+              Bạn chỉ có thể xem danh sách đăng ký FDA. Liên hệ System Admin để tạo mới hoặc chỉnh sửa.
+            </p>
+          </div>
+        </div>
+      )}
 
       {(upcomingExpirations.length > 0 || expiredRegistrations.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -559,9 +597,13 @@ export default function FDARegistrationsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(reg)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      {isSystemAdmin ? (
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(reg)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Chỉ xem</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 )

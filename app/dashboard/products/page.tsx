@@ -8,10 +8,11 @@ import { ProductsSearchFilter } from "@/components/products-search-filter"
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: { search?: string; category?: string; is_ftl?: string }
+  searchParams: Promise<{ search?: string; category?: string; is_ftl?: string }>
 }) {
   const supabase = await createClient()
-  const { search, category, is_ftl } = searchParams
+  const params = await searchParams
+  const { search, category, is_ftl } = params
 
   let query = supabase.from("products").select("*, companies(name)")
 

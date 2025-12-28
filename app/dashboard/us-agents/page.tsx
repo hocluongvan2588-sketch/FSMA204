@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Edit, Trash2, AlertCircle, Bell, Star } from "lucide-react"
+import { Plus, Edit, Trash2, AlertCircle, Bell, Star, ShieldAlert } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import Link from "next/link"
+import { Lock } from "lucide-react"
 
 interface USAgent {
   id: string
@@ -55,8 +58,9 @@ export default function USAgentsPage() {
   const [agents, setAgents] = useState<USAgent[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showDialog, setShowDialog] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
   // Form states
   const [agentName, setAgentName] = useState("")
@@ -77,9 +81,47 @@ export default function USAgentsPage() {
   const [notificationEnabled, setNotificationEnabled] = useState(true)
   const [notificationDaysBefore, setNotificationDaysBefore] = useState(60)
 
+  // Permission state
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null)
+  const [isCheckingPermission, setIsCheckingPermission] = useState(true)
+  const [userRole, setUserRole] = useState<string | null>(null)
+
   useEffect(() => {
-    loadData()
+    checkPermissionAndLoadData()
   }, [])
+
+  const checkPermissionAndLoadData = async () => {
+    setIsCheckingPermission(true)
+    const supabase = createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      setIsCheckingPermission(false)
+      return
+    }
+
+    const { data: profile } = await supabase.from("profiles").select("company_id, role").eq("id", user.id).single()
+
+    if (!profile?.company_id) {
+      setIsCheckingPermission(false)
+      return
+    }
+
+    setUserRole(profile.role)
+
+    // Check feature access via API
+    const response = await fetch(`/api/check-feature-access?companyId=${profile.company_id}&feature=us_agent`)
+    const { hasAccess: accessGranted } = await response.json()
+
+    setHasAccess(accessGranted)
+    setIsCheckingPermission(false)
+
+    if (accessGranted) {
+      loadData()
+    }
+  }
 
   const loadData = async () => {
     setIsLoading(true)
@@ -113,6 +155,15 @@ export default function USAgentsPage() {
   }
 
   const handleOpenDialog = (agent?: USAgent) => {
+    if (userRole !== "system_admin") {
+      toast({
+        variant: "destructive",
+        title: "Quyền truy cập bị từ chối",
+        description: "Chỉ System Administrator mới có thể tạo/chỉnh sửa US Agent",
+      })
+      return
+    }
+
     if (agent) {
       setEditingId(agent.id)
       setAgentName(agent.agent_name)
@@ -318,7 +369,7 @@ export default function USAgentsPage() {
 
   const primaryAgent = agents.find((a) => a.is_primary)
 
-  if (isLoading) {
+  if (isCheckingPermission) {
     return (
       <div className="p-8">
         <div className="animate-pulse space-y-4">
@@ -329,18 +380,78 @@ export default function USAgentsPage() {
     )
   }
 
+  if (hasAccess === false) {
+    return (
+      <div className="p-8 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Quản lý US Agent</h1>
+          <p className="text-muted-foreground mt-1">Quản lý đại lý Mỹ cho xuất khẩu thực phẩm vào Hoa Kỳ</p>
+        </div>
+
+        <Alert variant="default" className="border-blue-200 bg-blue-50">
+          <Lock className="h-5 w-5 text-blue-600" />
+          <AlertTitle className="text-blue-900">Tính năng cao cấp</AlertTitle>
+          <AlertDescription className="text-blue-700">
+            <p className="mb-3">
+              Quản lý US Agent là tính năng dành cho gói <strong>Professional</strong> trở lên. Tính năng này cho phép
+              bạn:
+            </p>
+            <ul className="list-disc list-inside space-y-1 mb-4">
+              <li>Quản lý thông tin đại lý Mỹ (US Agent)</li>
+              <li>Theo dõi hợp đồng và ngày hết hạn</li>
+              <li>Nhận thông báo tự động khi sắp hết hạn</li>
+              <li>Tuân thủ yêu cầu FDA cho xuất khẩu thực phẩm</li>
+            </ul>
+            <Button asChild className="bg-blue-600 hover:bg-blue-700">
+              <Link href="/admin/pricing">Nâng cấp ngay</Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+
+        {/* Show blurred preview */}
+        <Card className="opacity-60 pointer-events-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5" />
+              Xem trước tính năng (Yêu cầu nâng cấp)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="blur-sm h-64 bg-slate-100 rounded-lg"></div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Quản lý US Agent</h1>
-          <p className="text-muted-foreground mt-1">Quản lý đại lý Mỹ cho xuất khẩu thực phẩm vào Hoa Kỳ</p>
+          <p className="text-muted-foreground mt-1">
+            {userRole === "system_admin"
+              ? "Quản lý đại lý Mỹ cho xuất khẩu thực phẩm vào Hoa Kỳ"
+              : "Xem thông tin đại lý Mỹ (chỉ System Admin mới có thể tạo/chỉnh sửa)"}
+          </p>
         </div>
-        <Button onClick={() => handleOpenDialog()}>
-          <Plus className="h-4 w-4 mr-2" />
-          Thêm US Agent
-        </Button>
+        {userRole === "system_admin" && (
+          <Button onClick={() => handleOpenDialog()}>
+            <Plus className="h-4 w-4 mr-2" />
+            Thêm US Agent
+          </Button>
+        )}
       </div>
+
+      {userRole !== "system_admin" && (
+        <Alert className="border-blue-200 bg-blue-50">
+          <ShieldAlert className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="ml-2 text-sm text-blue-900">
+            Bạn chỉ có quyền <strong>xem</strong> danh sách US Agent. Để tạo hoặc chỉnh sửa, vui lòng liên hệ System
+            Administrator.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {primaryAgent && (
         <Card className="border-blue-200 bg-blue-50">
@@ -499,16 +610,20 @@ export default function USAgentsPage() {
                             <Star className="h-4 w-4" />
                           </Button>
                         )}
-                        <Button variant="outline" size="sm" onClick={() => handleOpenDialog(agent)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDelete(agent.id, agent.agent_name)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {userRole === "system_admin" && (
+                          <Button variant="outline" size="sm" onClick={() => handleOpenDialog(agent)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {userRole === "system_admin" && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(agent.id, agent.agent_name)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -519,227 +634,229 @@ export default function USAgentsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingId ? "Chỉnh sửa US Agent" : "Thêm US Agent mới"}</DialogTitle>
-            <DialogDescription>
-              {editingId ? "Cập nhật thông tin đại lý Mỹ" : "Nhập thông tin đại lý Mỹ cho xuất khẩu"}
-            </DialogDescription>
-          </DialogHeader>
+      {userRole === "system_admin" && (
+        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingId ? "Chỉnh sửa US Agent" : "Thêm US Agent mới"}</DialogTitle>
+              <DialogDescription>
+                {editingId ? "Cập nhật thông tin đại lý Mỹ" : "Nhập thông tin đại lý Mỹ cho xuất khẩu"}
+              </DialogDescription>
+            </DialogHeader>
 
-          <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="basic">Thông tin cơ bản</TabsTrigger>
-              <TabsTrigger value="address">Địa chỉ</TabsTrigger>
-              <TabsTrigger value="contract">Hợp đồng</TabsTrigger>
-            </TabsList>
+            <Tabs defaultValue="basic" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="basic">Thông tin cơ bản</TabsTrigger>
+                <TabsTrigger value="address">Địa chỉ</TabsTrigger>
+                <TabsTrigger value="contract">Hợp đồng</TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="basic" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="agentName">Tên đại lý *</Label>
-                  <Input
-                    id="agentName"
-                    value={agentName}
-                    onChange={(e) => setAgentName(e.target.value)}
-                    placeholder="Tên cá nhân hoặc công ty"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="agentCompanyName">Tên công ty</Label>
-                  <Input
-                    id="agentCompanyName"
-                    value={agentCompanyName}
-                    onChange={(e) => setAgentCompanyName(e.target.value)}
-                    placeholder="Tên công ty đại lý (nếu có)"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="agentType">Loại đại lý *</Label>
-                  <Select value={agentType} onValueChange={setAgentType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="individual">Cá nhân</SelectItem>
-                      <SelectItem value="company">Công ty</SelectItem>
-                      <SelectItem value="law_firm">Văn phòng luật</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="agent@example.com"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Điện thoại *</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 (xxx) xxx-xxxx"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="fax">Fax</Label>
-                  <Input
-                    id="fax"
-                    type="tel"
-                    value={fax}
-                    onChange={(e) => setFax(e.target.value)}
-                    placeholder="+1 (xxx) xxx-xxxx"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
-                <div className="space-y-0.5">
-                  <Label>Đặt làm đại lý chính</Label>
-                  <p className="text-sm text-muted-foreground">Đại lý chính sẽ được hiển thị ưu tiên</p>
-                </div>
-                <Switch checked={isPrimary} onCheckedChange={setIsPrimary} />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="address" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="streetAddress">Địa chỉ *</Label>
-                  <Input
-                    id="streetAddress"
-                    value={streetAddress}
-                    onChange={(e) => setStreetAddress(e.target.value)}
-                    placeholder="Số nhà, tên đường"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="city">Thành phố *</Label>
-                  <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="state">Bang *</Label>
-                  <Input id="state" value={state} onChange={(e) => setState(e.target.value)} placeholder="State" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="zipCode">Zip Code *</Label>
-                  <Input
-                    id="zipCode"
-                    value={zipCode}
-                    onChange={(e) => setZipCode(e.target.value)}
-                    placeholder="12345"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="country">Quốc gia</Label>
-                  <Input id="country" value="USA" disabled />
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="contract" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="serviceStartDate">Ngày bắt đầu hợp đồng *</Label>
-                  <Input
-                    id="serviceStartDate"
-                    type="date"
-                    value={serviceStartDate}
-                    onChange={(e) => setServiceStartDate(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="serviceEndDate">Ngày kết thúc hợp đồng</Label>
-                  <Input
-                    id="serviceEndDate"
-                    type="date"
-                    value={serviceEndDate}
-                    onChange={(e) => setServiceEndDate(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="contractStatus">Trạng thái hợp đồng</Label>
-                  <Select value={contractStatus} onValueChange={setContractStatus}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Đang hoạt động</SelectItem>
-                      <SelectItem value="expired">Hết hạn</SelectItem>
-                      <SelectItem value="cancelled">Đã hủy</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="notes">Ghi chú</Label>
-                  <Textarea
-                    id="notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Thông tin bổ sung về hợp đồng..."
-                    rows={3}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4 p-4 bg-amber-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Bật thông báo tự động</Label>
-                    <p className="text-sm text-muted-foreground">Nhận email nhắc nhở trước khi hợp đồng hết hạn</p>
-                  </div>
-                  <Switch checked={notificationEnabled} onCheckedChange={setNotificationEnabled} />
-                </div>
-
-                {notificationEnabled && (
+              <TabsContent value="basic" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="notificationDaysBefore">Thông báo trước (ngày)</Label>
+                    <Label htmlFor="agentName">Tên đại lý *</Label>
                     <Input
-                      id="notificationDaysBefore"
-                      type="number"
-                      min="1"
-                      max="365"
-                      value={notificationDaysBefore}
-                      onChange={(e) => setNotificationDaysBefore(Number.parseInt(e.target.value) || 60)}
+                      id="agentName"
+                      value={agentName}
+                      onChange={(e) => setAgentName(e.target.value)}
+                      placeholder="Tên cá nhân hoặc công ty"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Hệ thống sẽ gửi email nhắc nhở {notificationDaysBefore} ngày trước khi hết hạn
-                    </p>
                   </div>
-                )}
-              </div>
-            </TabsContent>
-          </Tabs>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)} disabled={isSaving}>
-              Hủy
-            </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Đang lưu..." : editingId ? "Cập nhật" : "Tạo mới"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  <div className="space-y-2">
+                    <Label htmlFor="agentCompanyName">Tên công ty</Label>
+                    <Input
+                      id="agentCompanyName"
+                      value={agentCompanyName}
+                      onChange={(e) => setAgentCompanyName(e.target.value)}
+                      placeholder="Tên công ty đại lý (nếu có)"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="agentType">Loại đại lý *</Label>
+                    <Select value={agentType} onValueChange={setAgentType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="individual">Cá nhân</SelectItem>
+                        <SelectItem value="company">Công ty</SelectItem>
+                        <SelectItem value="law_firm">Văn phòng luật</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="agent@example.com"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Điện thoại *</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+1 (xxx) xxx-xxxx"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="fax">Fax</Label>
+                    <Input
+                      id="fax"
+                      type="tel"
+                      value={fax}
+                      onChange={(e) => setFax(e.target.value)}
+                      placeholder="+1 (xxx) xxx-xxxx"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+                  <div className="space-y-0.5">
+                    <Label>Đặt làm đại lý chính</Label>
+                    <p className="text-sm text-muted-foreground">Đại lý chính sẽ được hiển thị ưu tiên</p>
+                  </div>
+                  <Switch checked={isPrimary} onCheckedChange={setIsPrimary} />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="address" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2 col-span-2">
+                    <Label htmlFor="streetAddress">Địa chỉ *</Label>
+                    <Input
+                      id="streetAddress"
+                      value={streetAddress}
+                      onChange={(e) => setStreetAddress(e.target.value)}
+                      placeholder="Số nhà, tên đường"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="city">Thành phố *</Label>
+                    <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="state">Bang *</Label>
+                    <Input id="state" value={state} onChange={(e) => setState(e.target.value)} placeholder="State" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="zipCode">Zip Code *</Label>
+                    <Input
+                      id="zipCode"
+                      value={zipCode}
+                      onChange={(e) => setZipCode(e.target.value)}
+                      placeholder="12345"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Quốc gia</Label>
+                    <Input id="country" value="USA" disabled />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="contract" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="serviceStartDate">Ngày bắt đầu hợp đồng *</Label>
+                    <Input
+                      id="serviceStartDate"
+                      type="date"
+                      value={serviceStartDate}
+                      onChange={(e) => setServiceStartDate(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="serviceEndDate">Ngày kết thúc hợp đồng</Label>
+                    <Input
+                      id="serviceEndDate"
+                      type="date"
+                      value={serviceEndDate}
+                      onChange={(e) => setServiceEndDate(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="contractStatus">Trạng thái hợp đồng</Label>
+                    <Select value={contractStatus} onValueChange={setContractStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Đang hoạt động</SelectItem>
+                        <SelectItem value="expired">Hết hạn</SelectItem>
+                        <SelectItem value="cancelled">Đã hủy</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2 col-span-2">
+                    <Label htmlFor="notes">Ghi chú</Label>
+                    <Textarea
+                      id="notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Thông tin bổ sung về hợp đồng..."
+                      rows={3}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4 p-4 bg-amber-50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>Bật thông báo tự động</Label>
+                      <p className="text-sm text-muted-foreground">Nhận email nhắc nhở trước khi hợp đồng hết hạn</p>
+                    </div>
+                    <Switch checked={notificationEnabled} onCheckedChange={setNotificationEnabled} />
+                  </div>
+
+                  {notificationEnabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="notificationDaysBefore">Thông báo trước (ngày)</Label>
+                      <Input
+                        id="notificationDaysBefore"
+                        type="number"
+                        min="1"
+                        max="365"
+                        value={notificationDaysBefore}
+                        onChange={(e) => setNotificationDaysBefore(Number.parseInt(e.target.value) || 60)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Hệ thống sẽ gửi email nhắc nhở {notificationDaysBefore} ngày trước khi hết hạn
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDialog(false)} disabled={isSaving}>
+                Hủy
+              </Button>
+              <Button onClick={handleSave} disabled={isSaving}>
+                {isSaving ? "Đang lưu..." : editingId ? "Cập nhật" : "Tạo mới"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

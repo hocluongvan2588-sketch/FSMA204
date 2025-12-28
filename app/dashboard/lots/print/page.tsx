@@ -9,9 +9,11 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Printer, Download, QrCode, Barcode, Search } from "lucide-react"
+import { Printer, Download, QrCode, Barcode, Search, Lock } from "lucide-react"
 import QRCode from "qrcode"
 import JsBarcode from "jsbarcode"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { WatermarkOverlay, getWatermarkConfig } from "@/lib/watermark"
 
 interface Lot {
   id: string
@@ -32,9 +34,11 @@ function PrintLotsContent() {
   const [codeType, setCodeType] = useState<"qr" | "barcode">("qr")
   const [loading, setLoading] = useState(true)
   const [previews, setPreviews] = useState<Record<string, string>>({})
+  const [packageName, setPackageName] = useState<string>("Loading...")
 
   useEffect(() => {
     fetchLots()
+    fetchSubscription()
   }, [searchQuery])
 
   const fetchLots = async () => {
@@ -53,6 +57,32 @@ function PrintLotsContent() {
     const { data } = await query.order("created_at", { ascending: false }).limit(50)
     setLots((data as Lot[]) || [])
     setLoading(false)
+  }
+
+  const fetchSubscription = async () => {
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) return
+
+    const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+
+    if (!profile?.company_id) return
+
+    const { data: subscription } = await supabase
+      .from("company_subscriptions")
+      .select("service_packages(name)")
+      .eq("company_id", profile.company_id)
+      .in("status", ["active", "trial"])
+      .order("start_date", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (subscription?.service_packages) {
+      setPackageName((subscription.service_packages as any).name)
+    }
   }
 
   const generateCode = async (tlc: string, type: "qr" | "barcode") => {
@@ -105,6 +135,8 @@ function PrintLotsContent() {
     if (!printWindow) return
 
     const selectedLotsData = lots.filter((lot) => selectedLots.includes(lot.id))
+    const shouldWatermark = packageName.toLowerCase().includes("free")
+    const watermarkConfig = getWatermarkConfig()
 
     const printContent = `
       <!DOCTYPE html>
@@ -119,6 +151,27 @@ function PrintLotsContent() {
             body { 
               font-family: Arial, sans-serif; 
               padding: 20px;
+              position: relative;
+            }
+            ${
+              shouldWatermark
+                ? `
+            .watermark {
+              position: fixed;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%) rotate(${watermarkConfig.rotation}deg);
+              font-size: ${watermarkConfig.fontSize}px;
+              color: ${watermarkConfig.color};
+              opacity: ${watermarkConfig.opacity};
+              font-weight: 600;
+              pointer-events: none;
+              user-select: none;
+              white-space: nowrap;
+              z-index: 9999;
+            }
+            `
+                : ""
             }
             .label {
               page-break-inside: avoid;
@@ -151,6 +204,7 @@ function PrintLotsContent() {
           </style>
         </head>
         <body>
+          ${shouldWatermark ? `<div class="watermark">${watermarkConfig.text}</div>` : ""}
           ${selectedLotsData
             .map(
               (lot) => `
@@ -187,6 +241,8 @@ function PrintLotsContent() {
 
   return (
     <div className="space-y-6">
+      <WatermarkOverlay packageName={packageName} />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">In nhãn mã TLC</h1>
@@ -196,6 +252,16 @@ function PrintLotsContent() {
           Quay lại
         </Button>
       </div>
+
+      {packageName.toLowerCase().includes("free") && (
+        <Alert className="border-orange-200 bg-orange-50">
+          <Lock className="h-4 w-4 text-orange-600" />
+          <AlertDescription className="text-sm text-orange-900">
+            <strong>Gói miễn phí:</strong> Nhãn in sẽ có watermark. Nâng cấp lên gói Starter để xóa watermark và có thêm
+            nhiều tính năng.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>

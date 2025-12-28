@@ -8,10 +8,11 @@ import { LotsSearchFilter } from "@/components/lots-search-filter"
 export default async function LotsPage({
   searchParams,
 }: {
-  searchParams: { search?: string; status?: string; product?: string }
+  searchParams: Promise<{ search?: string; status?: string; product?: string }>
 }) {
   const supabase = await createClient()
-  const { search, status, product } = searchParams
+  const params = await searchParams
+  const { search, status, product } = params
 
   let query = supabase.from("traceability_lots").select("*, products(product_name, product_code), facilities(name)")
 

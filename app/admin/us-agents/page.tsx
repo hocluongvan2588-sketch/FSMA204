@@ -45,6 +45,7 @@ export default function AdminUSAgentsPage() {
   const [showDialog, setShowDialog] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [userRole, setUserRole] = useState<string | null>(null)
 
   const [agentName, setAgentName] = useState("")
   const [agentCompanyName, setAgentCompanyName] = useState("")
@@ -60,6 +61,7 @@ export default function AdminUSAgentsPage() {
 
   useEffect(() => {
     loadData()
+    checkUserRole()
   }, [])
 
   const loadData = async () => {
@@ -70,6 +72,17 @@ export default function AdminUSAgentsPage() {
 
     if (agentsResult.data) setAgents(agentsResult.data)
     setIsLoading(false)
+  }
+
+  const checkUserRole = async () => {
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+      setUserRole(profile?.role || null)
+    }
   }
 
   const resetForm = () => {
@@ -202,6 +215,8 @@ export default function AdminUSAgentsPage() {
     return config[status] || config.active
   }
 
+  const isSystemAdmin = userRole === "system_admin"
+
   if (isLoading) {
     return (
       <div className="p-8">
@@ -220,26 +235,49 @@ export default function AdminUSAgentsPage() {
           <h1 className="text-3xl font-bold">{t("us-agent-management")}</h1>
           <p className="text-muted-foreground mt-1">{t("manage-all-fda-agents-independent-entities")}</p>
         </div>
-        <Button onClick={() => handleOpenDialog()}>
-          <Plus className="h-4 w-4 mr-2" />
-          {t("add-us-agent")}
-        </Button>
+        {isSystemAdmin && (
+          <Button onClick={() => handleOpenDialog()}>
+            <Plus className="h-4 w-4 mr-2" />
+            {t("add-us-agent")}
+          </Button>
+        )}
       </div>
 
-      <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-3 rounded-lg flex items-start gap-3">
-        <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-        <div>
-          <p className="font-semibold">{t("system-admin-mode")}</p>
-          <p className="text-sm">{t("agents-are-independent-us-representatives")}</p>
+      {!isSystemAdmin && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg flex items-start gap-3">
+          <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div>
+            <p className="font-semibold">Chế độ xem (View Only)</p>
+            <p className="text-sm">
+              Bạn chỉ có thể xem danh sách US Agent. Liên hệ System Admin để thêm mới hoặc chỉnh sửa.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
+
+      {isSystemAdmin && (
+        <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-3 rounded-lg flex items-start gap-3">
+          <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div>
+            <p className="font-semibold">{t("system-admin-mode")}</p>
+            <p className="text-sm">{t("agents-are-independent-us-representatives")}</p>
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -294,18 +332,22 @@ export default function AdminUSAgentsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleOpenDialog(agent)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDelete(agent.id, agent.agent_name)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      {isSystemAdmin ? (
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" onClick={() => handleOpenDialog(agent)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(agent.id, agent.agent_name)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Chỉ xem</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

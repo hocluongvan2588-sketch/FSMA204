@@ -26,6 +26,7 @@ import { InventoryStockWidgetEnhanced } from "@/components/inventory-stock-widge
 import { WasteDashboardWidget } from "@/components/waste-dashboard-widget"
 import { ExpirationMonitorWidget } from "@/components/expiration-monitor-widget"
 import { AuditTrailViewer } from "@/components/audit-trail-viewer"
+import { MaterializedViewManager } from "@/lib/utils/materialized-view-manager"
 
 interface AdminStats {
   totalUsers: number
@@ -197,135 +198,60 @@ export default function AdminDashboard() {
             return
           }
 
-          const results = await Promise.allSettled([
-            supabase.from("facilities").select("*", { count: "exact", head: true }).eq("company_id", companyId),
-            supabase.from("products").select("*", { count: "exact", head: true }).eq("company_id", companyId),
-            supabase
-              .from("traceability_lots")
-              .select("id, status, expiry_date, facility_id")
-              .eq("company_id", companyId)
-              .is("deleted_at", null),
-            supabase
-              .from("critical_tracking_events")
-              .select("*", { count: "exact", head: true })
-              .eq("company_id", companyId),
-            supabase.from("company_storage_summary").select("*").eq("company_id", companyId).single(),
-            supabase
-              .from("fda_registrations")
-              .select("*, facilities!inner(company_id)")
-              .eq("facilities.company_id", companyId),
-            supabase.from("us_agents").select("*").eq("company_id", companyId),
-            supabase
-              .from("profiles")
-              .select("*", { count: "exact", head: true })
-              .eq("company_id", companyId)
-              .eq("role", "operator"),
-            supabase
-              .from("profiles")
-              .select("*", { count: "exact", head: true })
-              .eq("company_id", companyId)
-              .eq("role", "manager"),
-            supabase
-              .from("data_quality_alerts")
-              .select("*")
-              .eq("status", "open")
-              .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+          const [metrics, complianceAlerts] = await Promise.all([
+            MaterializedViewManager.getDashboardMetrics(companyId),
+            MaterializedViewManager.getComplianceAlerts(companyId),
           ])
 
-          const [
-            facilitiesResult,
-            productsResult,
-            tlcResult,
-            ctesResult,
-            storageResult,
-            fdaRegsResult,
-            usAgentsResult,
-            operatorsResult,
-            managersResult,
-            alertsResult,
-          ] = results
+          if (metrics) {
+            setStats({
+              totalFacilities: metrics.total_facilities || 0,
+              totalProducts: metrics.total_products || 0,
+              totalTLCs: metrics.total_tlcs || 0,
+              totalCTEs: metrics.total_ctes || 0,
+              activeTLCs: metrics.active_tlcs || 0,
+              expiredTLCs: metrics.expired_tlcs || 0,
+              tlcsWithCompleteCTEs: 0,
+              tlcsWithMissingKDEs: complianceAlerts?.missing_kde_count || 0,
+              complianceScore: 0,
+              fdaRegisteredFacilities: metrics.fda_registered_facilities || 0,
+              fdaRegistrationsExpiring: metrics.fda_registrations_expiring_soon || 0,
+              usAgentsActive: metrics.active_us_agents || 0,
+              usAgentsExpiring: metrics.us_agents_expiring_soon || 0,
+              operatorsCount: metrics.operators_count || 0,
+              managersCount: metrics.managers_count || 0,
+              recentAlertsCount: complianceAlerts?.total_alerts || 0,
+              storageUsagePercent: metrics.storage_usage_percent || 0,
+              currentStorageGB: metrics.current_storage_gb || 0,
+              maxStorageGB: metrics.max_storage_gb || 0,
+            })
 
-          const tlcData = tlcResult.status === "fulfilled" ? tlcResult.value.data : []
-          const fdaRegs = fdaRegsResult.status === "fulfilled" ? fdaRegsResult.value.data : []
-          const usAgents = usAgentsResult.status === "fulfilled" ? usAgentsResult.value.data : []
-          const alerts = alertsResult.status === "fulfilled" ? alertsResult.value.data : []
-          const storageData = storageResult.status === "fulfilled" ? storageResult.value.data : null
+            const { data: recentLogs, error: logsError } = await supabase
+              .from("activity_logs")
+              .select(`
+                *,
+                profiles:user_id(company_id, full_name)
+              `)
+              .eq("profiles.company_id", companyId)
+              .order("created_at", { ascending: false })
+              .limit(5)
 
-          const now = new Date()
-          const activeTLCs = tlcData?.filter((tlc: any) => tlc.status === "active").length || 0
-          const expiredTLCs =
-            tlcData?.filter((tlc: any) => tlc.expiry_date && new Date(tlc.expiry_date) < now).length || 0
+            if (logsError) {
+              console.error("[v0] Activity logs fetch error:", logsError)
+            }
 
-          const fdaRegistered = fdaRegs?.filter((reg: any) => reg.status === "active").length || 0
-          const fdaExpiring =
-            fdaRegs?.filter(
-              (reg: any) =>
-                reg.expiry_date && new Date(reg.expiry_date) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-            ).length || 0
-
-          const usAgentsActive = usAgents?.filter((agent: any) => agent.status === "active").length || 0
-          const usAgentsExpiring =
-            usAgents?.filter(
-              (agent: any) =>
-                agent.expiry_date && new Date(agent.expiry_date) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-            ).length || 0
-
-          const complianceScore = 0
-
-          setStats({
-            totalFacilities:
-              facilitiesResult.status === "fulfilled" && facilitiesResult.value.count
-                ? facilitiesResult.value.count
-                : 0,
-            totalProducts:
-              productsResult.status === "fulfilled" && productsResult.value.count ? productsResult.value.count : 0,
-            totalTLCs: tlcData?.length || 0,
-            totalCTEs: ctesResult.status === "fulfilled" && ctesResult.value.count ? ctesResult.value.count : 0,
-            activeTLCs,
-            expiredTLCs,
-            tlcsWithCompleteCTEs: 0,
-            tlcsWithMissingKDEs: 0,
-            complianceScore,
-            fdaRegisteredFacilities: fdaRegistered,
-            fdaRegistrationsExpiring: fdaExpiring,
-            usAgentsActive,
-            usAgentsExpiring,
-            operatorsCount:
-              operatorsResult.status === "fulfilled" && operatorsResult.value.count ? operatorsResult.value.count : 0,
-            managersCount:
-              managersResult.status === "fulfilled" && managersResult.value.count ? managersResult.value.count : 0,
-            recentAlertsCount: alerts?.length || 0,
-            storageUsagePercent: storageData?.usage_percentage || 0,
-            currentStorageGB: storageData?.current_storage_gb || 0,
-            maxStorageGB: storageData?.max_storage_gb || 0,
-          })
-
-          const { data: recentLogs, error: logsError } = await supabase
-            .from("activity_logs")
-            .select(`
-              *,
-              profiles:user_id(company_id, full_name)
-            `)
-            .order("created_at", { ascending: false })
-            .limit(20)
-
-          const companyLogs = recentLogs?.filter((log) => log.profiles?.company_id === companyId).slice(0, 5) || []
-
-          if (logsError) {
-            console.error("[v0] Activity logs fetch error:", logsError)
+            setRecentActivity(
+              (recentLogs || []).map((log) => ({
+                id: log.id,
+                type: log.resource_type === "traceability_lots" ? "tlc" : "cte",
+                title: log.action,
+                description: `${log.resource_type || "Unknown"} - ${log.action}`,
+                timestamp: log.created_at,
+                status: log.action.includes("DELETE") ? "error" : "success",
+                icon: log.resource_type === "traceability_lots" ? Tags : FileText,
+              })),
+            )
           }
-
-          setRecentActivity(
-            companyLogs.map((log) => ({
-              id: log.id,
-              type: log.resource_type === "traceability_lots" ? "tlc" : "cte",
-              title: log.action,
-              description: `${log.resource_type || "Unknown"} - ${log.action}`,
-              timestamp: log.created_at,
-              status: log.action.includes("DELETE") ? "error" : "success",
-              icon: log.resource_type === "traceability_lots" ? Tags : FileText,
-            })),
-          )
         }
       }
     } catch (error) {

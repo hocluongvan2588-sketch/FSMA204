@@ -28,9 +28,43 @@ export interface StockCalculationResult {
 /**
  * Calculate current stock for a TLC based on ALL CTE event types
  * This is the main function that should be used everywhere
+ *
+ * PERFORMANCE OPTIMIZATION: Now uses materialized view as primary source
  */
 export async function calculateCurrentStock(tlcCode: string): Promise<StockCalculationResult> {
   const supabase = createClient()
+
+  try {
+    const { data: mvStock, error: mvError } = await supabase
+      .from("mv_tlc_current_stock")
+      .select("*")
+      .eq("tlc_code", tlcCode.trim())
+      .single()
+
+    if (!mvError && mvStock) {
+      // Materialized view hit - instant response!
+      console.log("[v0] ✅ Stock calculation from materialized view (fast path)")
+      return {
+        tlc_id: mvStock.tlc_id,
+        tlc_code: mvStock.tlc_code,
+        current_stock: mvStock.current_stock,
+        total_production: mvStock.initial_quantity,
+        total_receiving: mvStock.total_receiving,
+        total_harvest: mvStock.total_harvest,
+        total_returns: mvStock.total_returns,
+        total_shipping: mvStock.total_shipping,
+        total_transformation_input: mvStock.total_transformation_input,
+        total_disposal: mvStock.total_disposal,
+        is_negative: mvStock.is_negative_stock,
+        last_updated: new Date(mvStock.last_refreshed),
+      }
+    }
+  } catch (mvError) {
+    console.warn("[v0] Materialized view not available, falling back to real-time calculation:", mvError)
+  }
+
+  // Fallback to real-time calculation if materialized view unavailable
+  console.log("[v0] ⚠️ Using real-time stock calculation (slow path)")
 
   // Get TLC info
   const { data: tlcData, error: tlcError } = await supabase
@@ -55,7 +89,7 @@ export async function calculateCurrentStock(tlcCode: string): Promise<StockCalcu
     .from("critical_tracking_events")
     .select("quantity_processed, unit")
     .eq("tlc_id", tlcId)
-    .in("event_type", ["receiving", "receiving_distributor", "first_receiving", "receiving_warehouse"]) // Query all receiving event types
+    .in("event_type", ["receiving", "receiving_distributor", "first_receiving", "receiving_warehouse"])
 
   const totalReceiving = (receivingEvents || []).reduce((sum, e) => {
     try {
@@ -105,7 +139,7 @@ export async function calculateCurrentStock(tlcCode: string): Promise<StockCalcu
     .from("critical_tracking_events")
     .select("quantity_processed, unit")
     .eq("tlc_id", tlcId)
-    .in("event_type", ["shipping", "shipping_distributor", "dispatch"]) // Query all shipping event types
+    .in("event_type", ["shipping", "shipping_distributor", "dispatch"])
 
   const totalShipping = (shippingEvents || []).reduce((sum, e) => {
     try {
@@ -146,7 +180,7 @@ export async function calculateCurrentStock(tlcCode: string): Promise<StockCalcu
     .from("critical_tracking_events")
     .select("quantity_processed, unit")
     .eq("tlc_id", tlcId)
-    .in("event_type", ["disposal", "waste", "destruction"]) // Query all disposal event types
+    .in("event_type", ["disposal", "waste", "destruction"])
 
   const totalDisposal = (disposalEvents || []).reduce((sum, e) => {
     try {

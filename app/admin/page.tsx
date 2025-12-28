@@ -26,7 +26,6 @@ import { InventoryStockWidgetEnhanced } from "@/components/inventory-stock-widge
 import { WasteDashboardWidget } from "@/components/waste-dashboard-widget"
 import { ExpirationMonitorWidget } from "@/components/expiration-monitor-widget"
 import { AuditTrailViewer } from "@/components/audit-trail-viewer"
-import { MaterializedViewManager } from "@/lib/utils/materialized-view-manager"
 
 interface AdminStats {
   totalUsers: number
@@ -198,60 +197,67 @@ export default function AdminDashboard() {
             return
           }
 
-          const [metrics, complianceAlerts] = await Promise.all([
-            MaterializedViewManager.getDashboardMetrics(companyId),
-            MaterializedViewManager.getComplianceAlerts(companyId),
+          const [metricsResponse, alertsResponse] = await Promise.all([
+            fetch("/api/dashboard/metrics"),
+            fetch("/api/dashboard/compliance-alerts"),
           ])
 
-          if (metrics) {
-            setStats({
-              totalFacilities: metrics.total_facilities || 0,
-              totalProducts: metrics.total_products || 0,
-              totalTLCs: metrics.total_tlcs || 0,
-              totalCTEs: metrics.total_ctes || 0,
-              activeTLCs: metrics.active_tlcs || 0,
-              expiredTLCs: metrics.expired_tlcs || 0,
-              tlcsWithCompleteCTEs: 0,
-              tlcsWithMissingKDEs: complianceAlerts?.missing_kde_count || 0,
-              complianceScore: 0,
-              fdaRegisteredFacilities: metrics.fda_registered_facilities || 0,
-              fdaRegistrationsExpiring: metrics.fda_registrations_expiring_soon || 0,
-              usAgentsActive: metrics.active_us_agents || 0,
-              usAgentsExpiring: metrics.us_agents_expiring_soon || 0,
-              operatorsCount: metrics.operators_count || 0,
-              managersCount: metrics.managers_count || 0,
-              recentAlertsCount: complianceAlerts?.total_alerts || 0,
-              storageUsagePercent: metrics.storage_usage_percent || 0,
-              currentStorageGB: metrics.current_storage_gb || 0,
-              maxStorageGB: metrics.max_storage_gb || 0,
-            })
-
-            const { data: recentLogs, error: logsError } = await supabase
-              .from("activity_logs")
-              .select(`
-                *,
-                profiles:user_id(company_id, full_name)
-              `)
-              .eq("profiles.company_id", companyId)
-              .order("created_at", { ascending: false })
-              .limit(5)
-
-            if (logsError) {
-              console.error("[v0] Activity logs fetch error:", logsError)
-            }
-
-            setRecentActivity(
-              (recentLogs || []).map((log) => ({
-                id: log.id,
-                type: log.resource_type === "traceability_lots" ? "tlc" : "cte",
-                title: log.action,
-                description: `${log.resource_type || "Unknown"} - ${log.action}`,
-                timestamp: log.created_at,
-                status: log.action.includes("DELETE") ? "error" : "success",
-                icon: log.resource_type === "traceability_lots" ? Tags : FileText,
-              })),
-            )
+          if (!metricsResponse.ok || !alertsResponse.ok) {
+            console.error("[v0] Error fetching dashboard data")
+            setIsLoading(false)
+            return
           }
+
+          const metrics = await metricsResponse.json()
+          const complianceAlerts = await alertsResponse.json()
+
+          setStats({
+            totalFacilities: metrics.total_facilities || 0,
+            totalProducts: metrics.total_products || 0,
+            totalTLCs: metrics.total_tlcs || 0,
+            totalCTEs: metrics.total_ctes || 0,
+            activeTLCs: metrics.active_tlcs || 0,
+            expiredTLCs: metrics.expired_tlcs || 0,
+            tlcsWithCompleteCTEs: 0,
+            tlcsWithMissingKDEs: complianceAlerts?.missing_kde_count || 0,
+            complianceScore: 0,
+            fdaRegisteredFacilities: metrics.fda_registered_facilities || 0,
+            fdaRegistrationsExpiring: metrics.fda_registrations_expiring_soon || 0,
+            usAgentsActive: metrics.active_us_agents || 0,
+            usAgentsExpiring: metrics.us_agents_expiring_soon || 0,
+            operatorsCount: metrics.operators_count || 0,
+            managersCount: metrics.managers_count || 0,
+            recentAlertsCount: complianceAlerts?.total_alerts || 0,
+            storageUsagePercent: metrics.storage_usage_percent || 0,
+            currentStorageGB: metrics.current_storage_gb || 0,
+            maxStorageGB: metrics.max_storage_gb || 0,
+          })
+
+          const { data: recentLogs, error: logsError } = await supabase
+            .from("activity_logs")
+            .select(`
+              *,
+              profiles:user_id(company_id, full_name)
+            `)
+            .eq("profiles.company_id", companyId)
+            .order("created_at", { ascending: false })
+            .limit(5)
+
+          if (logsError) {
+            console.error("[v0] Activity logs fetch error:", logsError)
+          }
+
+          setRecentActivity(
+            (recentLogs || []).map((log) => ({
+              id: log.id,
+              type: log.resource_type === "traceability_lots" ? "tlc" : "cte",
+              title: log.action,
+              description: `${log.resource_type || "Unknown"} - ${log.action}`,
+              timestamp: log.created_at,
+              status: log.action.includes("DELETE") ? "error" : "success",
+              icon: log.resource_type === "traceability_lots" ? Tags : FileText,
+            })),
+          )
         }
       }
     } catch (error) {

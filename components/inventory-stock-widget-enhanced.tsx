@@ -25,10 +25,15 @@ export function InventoryStockWidgetEnhanced({
   productName,
   className,
 }: InventoryStockWidgetProps) {
-  const utilizationPercent = initialStock > 0 ? ((initialStock - currentStock) / initialStock) * 100 : 0
+  const safeCurrentStock = currentStock ?? 0
+  const safeInitialStock = initialStock ?? 0
+  const safeTotalShipped = totalShipped ?? 0
+  const safeTotalTransformed = totalTransformed ?? 0
+
+  const utilizationPercent = safeInitialStock > 0 ? ((safeInitialStock - safeCurrentStock) / safeInitialStock) * 100 : 0
 
   const getStockStatus = () => {
-    if (currentStock <= 0)
+    if (safeCurrentStock <= 0)
       return {
         label: "Hết hàng",
         color: "destructive",
@@ -36,7 +41,7 @@ export function InventoryStockWidgetEnhanced({
         borderColor: "border-red-300",
         icon: AlertTriangle,
       }
-    if (currentStock < initialStock * 0.1)
+    if (safeCurrentStock < safeInitialStock * 0.1)
       return {
         label: "Rất thấp",
         color: "destructive",
@@ -44,7 +49,7 @@ export function InventoryStockWidgetEnhanced({
         borderColor: "border-red-200",
         icon: AlertTriangle,
       }
-    if (currentStock < initialStock * 0.3)
+    if (safeCurrentStock < safeInitialStock * 0.3)
       return {
         label: "Thấp",
         color: "secondary",
@@ -82,7 +87,7 @@ export function InventoryStockWidgetEnhanced({
             <div>
               <p className="text-xs text-slate-600 mb-1">Số lượng hiện tại</p>
               <p className="text-3xl font-bold text-slate-900">
-                {currentStock.toFixed(2)} <span className="text-lg">{unit}</span>
+                {safeCurrentStock.toFixed(2)} <span className="text-lg">{unit}</span>
               </p>
             </div>
             <StatusIcon
@@ -115,27 +120,27 @@ export function InventoryStockWidgetEnhanced({
             <p className="text-xs text-slate-500">Tồn đầu</p>
             <p className="text-sm font-semibold text-slate-900 flex items-center gap-1">
               <TrendingUp className="h-3 w-3 text-blue-600" />
-              {initialStock.toFixed(2)} {unit}
+              {safeInitialStock.toFixed(2)} {unit}
             </p>
           </div>
           <div>
             <p className="text-xs text-slate-500">Còn lại</p>
             <p className="text-sm font-semibold text-slate-900">
-              {currentStock.toFixed(2)} {unit}
+              {safeCurrentStock.toFixed(2)} {unit}
             </p>
           </div>
           <div>
             <p className="text-xs text-slate-500">Đã xuất</p>
             <p className="text-sm font-semibold text-orange-700 flex items-center gap-1">
               <TrendingDown className="h-3 w-3" />
-              {totalShipped.toFixed(2)} {unit}
+              {safeTotalShipped.toFixed(2)} {unit}
             </p>
           </div>
           <div>
             <p className="text-xs text-slate-500">Đã chế biến</p>
             <p className="text-sm font-semibold text-purple-700 flex items-center gap-1">
               <TrendingDown className="h-3 w-3" />
-              {totalTransformed.toFixed(2)} {unit}
+              {safeTotalTransformed.toFixed(2)} {unit}
             </p>
           </div>
         </div>
@@ -146,7 +151,7 @@ export function InventoryStockWidgetEnhanced({
           </AlertDescription>
         </Alert>
 
-        {currentStock <= 0 && (
+        {safeCurrentStock <= 0 && (
           <Alert className="border-red-300 bg-red-50">
             <AlertTriangle className="h-4 w-4 text-red-600" />
             <AlertDescription className="text-sm text-red-800">

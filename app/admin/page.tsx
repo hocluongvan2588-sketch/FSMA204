@@ -18,14 +18,20 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  ChevronRight,
+  BarChart3,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { useLanguage } from "@/contexts/language-context"
-import { InventoryStockWidgetEnhanced } from "@/components/inventory-stock-widget-enhanced"
-import { WasteDashboardWidget } from "@/components/waste-dashboard-widget"
-import { ExpirationMonitorWidget } from "@/components/expiration-monitor-widget"
-import { AuditTrailViewer } from "@/components/audit-trail-viewer"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import WasteDashboardWidget from "@/components/waste-dashboard-widget"
+import ExpirationMonitorWidget from "@/components/expiration-monitor-widget"
+import InventoryStockWidgetEnhanced from "@/components/inventory-stock-widget-enhanced"
+import AuditTrailViewer from "@/components/audit-trail-viewer"
 
 interface AdminStats {
   totalUsers: number
@@ -120,6 +126,8 @@ export default function AdminDashboard() {
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
   useEffect(() => {
     loadData()
   }, [])
@@ -187,6 +195,7 @@ export default function AdminDashboard() {
             storageUsagePercent: 0,
             currentStorageGB: 0,
             maxStorageGB: 0,
+            recentUsers: adminStats.recentUsers || [], // Added recentUsers
           })
         } else {
           const companyId = profileData.company_id
@@ -307,24 +316,21 @@ export default function AdminDashboard() {
   const isSystemAdmin = profile?.role === "system_admin"
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      <div className="flex items-center justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">{t("admin.overview.title")}</h1>
+            <h1 className="text-2xl font-bold">{t("admin.overview.title")}</h1>
             {isSystemAdmin ? (
-              <Badge className="bg-purple-600 text-white">{t("admin.overview.systemBadge")}</Badge>
+              <Badge className="bg-purple-600 text-white text-xs">{t("admin.overview.systemBadge")}</Badge>
             ) : (
-              <Badge className="bg-red-600 text-white">{t("admin.overview.companyBadge")}</Badge>
+              <Badge className="bg-red-600 text-white text-xs">{t("admin.overview.companyBadge")}</Badge>
             )}
           </div>
-          <p className="text-muted-foreground">
-            {isSystemAdmin ? "Quản lý toàn bộ hệ thống FSMA 204" : t("admin.overview.description")}
-          </p>
           {profile?.companies && !isSystemAdmin && (
-            <div className="flex items-center gap-2 text-sm mt-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{(profile.companies as any).name}</span>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Building2 className="h-4 w-4" />
+              <span>{(profile.companies as any).name}</span>
             </div>
           )}
         </div>
@@ -335,8 +341,8 @@ export default function AdminDashboard() {
       </div>
 
       {isSystemAdmin && (
-        <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-3 rounded-lg flex items-start gap-3">
-          <svg className="h-5 w-5 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-purple-50 border border-purple-200 text-purple-800 px-4 py-2.5 rounded-lg flex items-start gap-3">
+          <svg className="h-5 w-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -345,421 +351,548 @@ export default function AdminDashboard() {
             />
           </svg>
           <div>
-            <p className="font-semibold">System Admin Mode</p>
-            <p className="text-sm">
-              Bạn có quyền quản lý toàn bộ hệ thống. Để xem data nghiệp vụ của companies, vui lòng đăng nhập với tài
-              khoản Company Admin.
-            </p>
+            <p className="font-semibold text-sm">System Admin Mode</p>
+            <p className="text-xs">Đăng nhập với Company Admin để xem data nghiệp vụ chi tiết.</p>
           </div>
         </div>
       )}
 
       {!isSystemAdmin && stats && (
         <>
-          <Card className="border-2 border-primary">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-primary" />
-                Tổng quan Tuân thủ FSMA 204
-              </CardTitle>
-              <CardDescription>Đánh giá tình trạng tuân thủ quy định FDA cho cơ sở của bạn</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Điểm Tuân thủ</p>
-                    <p className={`text-4xl font-bold ${getComplianceColor(stats.complianceScore)}`}>
+          <Card className="border-l-4 border-l-primary shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-primary" />
+                  <CardTitle className="text-base">FSMA 204 Compliance</CardTitle>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className={`text-3xl font-bold ${getComplianceColor(stats.complianceScore)}`}>
                       {stats.complianceScore}%
                     </p>
-                    <p className="text-sm text-muted-foreground mt-1">{getComplianceMessage(stats.complianceScore)}</p>
+                    <p className="text-xs text-muted-foreground">{getComplianceMessage(stats.complianceScore)}</p>
                   </div>
-                  <div className="text-right space-y-2">
-                    {stats.fdaRegistrationsExpiring > 0 && (
-                      <Badge variant="destructive" className="gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        {stats.fdaRegistrationsExpiring} FDA sắp hết hạn
-                      </Badge>
-                    )}
-                    {stats.usAgentsExpiring > 0 && (
-                      <Badge variant="destructive" className="gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        {stats.usAgentsExpiring} US Agent sắp hết hạn
-                      </Badge>
-                    )}
-                    {stats.recentAlertsCount > 0 && (
-                      <Badge variant="destructive" className="gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        {stats.recentAlertsCount} cảnh báo mới
-                      </Badge>
-                    )}
-                  </div>
+                  {(stats.fdaRegistrationsExpiring > 0 || stats.recentAlertsCount > 0) && (
+                    <div className="flex flex-col gap-1">
+                      {stats.fdaRegistrationsExpiring > 0 && (
+                        <Badge variant="destructive" className="text-xs gap-1 whitespace-nowrap">
+                          <AlertTriangle className="h-3 w-3" />
+                          {stats.fdaRegistrationsExpiring} FDA hết hạn
+                        </Badge>
+                      )}
+                      {stats.recentAlertsCount > 0 && (
+                        <Badge variant="destructive" className="text-xs gap-1 whitespace-nowrap">
+                          <AlertTriangle className="h-3 w-3" />
+                          {stats.recentAlertsCount} cảnh báo
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <Progress value={stats.complianceScore} className="h-3" />
               </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <Progress value={stats.complianceScore} className="h-2" />
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card
-              className="hover:shadow-md transition-shadow cursor-pointer"
+              className="hover:shadow-md transition-all cursor-pointer border-l-4 border-l-blue-500"
               onClick={() => router.push("/dashboard/facilities")}
             >
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Cơ sở</CardTitle>
-                <Warehouse className="h-5 w-5 text-blue-600" />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Cơ sở</CardTitle>
+                <Warehouse className="h-4 w-4 text-blue-600" />
               </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{stats.totalFacilities}</div>
-                <div className="flex items-center gap-2 mt-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <p className="text-xs text-muted-foreground">{stats.fdaRegisteredFacilities} đã đăng ký FDA</p>
+              <CardContent className="space-y-1">
+                <div className="text-2xl font-bold">{stats.totalFacilities}</div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                  <p className="text-xs text-muted-foreground">{stats.fdaRegisteredFacilities} FDA</p>
                 </div>
               </CardContent>
             </Card>
 
             <Card
-              className="hover:shadow-md transition-shadow cursor-pointer"
+              className="hover:shadow-md transition-all cursor-pointer border-l-4 border-l-green-500"
               onClick={() => router.push("/dashboard/products")}
             >
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Sản phẩm FTL</CardTitle>
-                <PackageIcon className="h-5 w-5 text-green-600" />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Sản phẩm FTL</CardTitle>
+                <PackageIcon className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{stats.totalProducts}</div>
-                <p className="text-xs text-muted-foreground mt-2">Sản phẩm cần truy xuất nguồn gốc</p>
+                <div className="text-2xl font-bold">{stats.totalProducts}</div>
+                <p className="text-xs text-muted-foreground mt-1">Sản phẩm truy xuất</p>
               </CardContent>
             </Card>
 
             <Card
-              className="hover:shadow-md transition-shadow cursor-pointer"
+              className="hover:shadow-md transition-all cursor-pointer border-l-4 border-l-purple-500"
               onClick={() => router.push("/dashboard/traceability")}
             >
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Mã TLC</CardTitle>
-                <Tags className="h-5 w-5 text-purple-600" />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Mã TLC</CardTitle>
+                <Tags className="h-4 w-4 text-purple-600" />
               </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{stats.totalTLCs}</div>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-xs text-green-600 font-medium">{stats.activeTLCs} hoạt động</span>
+              <CardContent className="space-y-1">
+                <div className="text-2xl font-bold">{stats.totalTLCs}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-green-600 font-medium">{stats.activeTLCs} active</span>
                   {stats.expiredTLCs > 0 && (
-                    <span className="text-xs text-red-600 font-medium">{stats.expiredTLCs} hết hạn</span>
+                    <span className="text-xs text-red-600 font-medium">{stats.expiredTLCs} expired</span>
                   )}
                 </div>
               </CardContent>
             </Card>
 
             <Card
-              className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => router.push("/dashboard/ctes")}
+              className="hover:shadow-md transition-all cursor-pointer border-l-4 border-l-orange-500"
+              onClick={() => router.push("/dashboard/cte")}
             >
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Sự kiện CTE</CardTitle>
-                <FileText className="h-5 w-5 text-orange-600" />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Sự kiện CTE</CardTitle>
+                <FileText className="h-4 w-4 text-orange-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{stats.totalCTEs}</div>
-                <p className="text-xs text-muted-foreground mt-2">Critical Tracking Events</p>
+                <div className="text-2xl font-bold">{stats.totalCTEs}</div>
+                <p className="text-xs text-muted-foreground mt-1">Critical Events</p>
               </CardContent>
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Đăng ký FDA</CardTitle>
-                <Shield className="h-5 w-5 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Đã đăng ký:</span>
-                    <span className="font-medium">
-                      {stats.fdaRegisteredFacilities}/{stats.totalFacilities}
-                    </span>
-                  </div>
-                  {stats.fdaRegistrationsExpiring > 0 && (
+          <Tabs defaultValue="compliance" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="compliance" className="text-xs">
+                <Shield className="h-3.5 w-3.5 mr-1.5" />
+                FDA & Compliance
+              </TabsTrigger>
+              <TabsTrigger value="operations" className="text-xs">
+                <Activity className="h-3.5 w-3.5 mr-1.5" />
+                Operations
+              </TabsTrigger>
+              <TabsTrigger value="monitoring" className="text-xs">
+                <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
+                Monitoring
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="compliance" className="space-y-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-blue-600" />
+                      Đăng ký FDA
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-red-600">Sắp hết hạn:</span>
-                      <Badge variant="destructive">{stats.fdaRegistrationsExpiring}</Badge>
+                      <span className="text-xs text-muted-foreground">Đã đăng ký:</span>
+                      <span className="font-semibold text-sm">
+                        {stats.fdaRegisteredFacilities}/{stats.totalFacilities}
+                      </span>
                     </div>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-2 bg-transparent"
-                    onClick={() => router.push("/admin/fda-registrations")}
-                  >
-                    Quản lý FDA →
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">US Agent</CardTitle>
-                <Users className="h-5 w-5 text-green-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Hoạt động:</span>
-                    <span className="font-medium">{stats.usAgentsActive}</span>
-                  </div>
-                  {stats.usAgentsExpiring > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-red-600">Sắp hết hạn:</span>
-                      <Badge variant="destructive">{stats.usAgentsExpiring}</Badge>
-                    </div>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-2 bg-transparent"
-                    onClick={() => router.push("/admin/us-agents")}
-                  >
-                    Quản lý US Agent →
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Đội ngũ</CardTitle>
-                <Users className="h-5 w-5 text-purple-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Operators:</span>
-                    <span className="font-medium">{stats.operatorsCount}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Managers:</span>
-                    <span className="font-medium">{stats.managersCount}</span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-2 bg-transparent"
-                    onClick={() => router.push("/admin/users")}
-                  >
-                    Quản lý Users →
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-blue-600" />
-                  Dung lượng Lưu trữ
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Đã sử dụng:</span>
-                    <span className="font-medium">
-                      {stats.currentStorageGB.toFixed(2)} / {stats.maxStorageGB} GB
-                    </span>
-                  </div>
-                  <Progress value={stats.storageUsagePercent} className="h-2" />
-                  <p className="text-xs text-muted-foreground">
-                    {stats.storageUsagePercent >= 90 ? (
-                      <span className="text-red-600 font-medium">Cảnh báo: Gần đầy dung lượng!</span>
-                    ) : stats.storageUsagePercent >= 75 ? (
-                      <span className="text-yellow-600 font-medium">Lưu ý: Đã dùng hơn 75%</span>
-                    ) : (
-                      <span className="text-green-600">Dung lượng còn thoải mái</span>
+                    {stats.fdaRegistrationsExpiring > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-red-600">Sắp hết hạn:</span>
+                        <Badge variant="destructive" className="text-xs">
+                          {stats.fdaRegistrationsExpiring}
+                        </Badge>
+                      </div>
                     )}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-between text-xs h-8 mt-2"
+                      onClick={() => router.push("/admin/fda-registrations")}
+                    >
+                      Quản lý FDA
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-600" />
-                  Cảnh báo Gần đây
-                </CardTitle>
-                <CardDescription>Cảnh báo chất lượng dữ liệu trong 7 ngày qua</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {stats.recentAlertsCount === 0 ? (
-                  <div className="text-center py-4">
-                    <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Không có cảnh báo mới</p>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="text-3xl font-bold text-red-600">{stats.recentAlertsCount}</div>
-                    <p className="text-sm text-muted-foreground mt-1">Cảnh báo cần xử lý</p>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Users className="h-4 w-4 text-green-600" />
+                      US Agent
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Hoạt động:</span>
+                      <span className="font-semibold text-sm">{stats.usAgentsActive}</span>
+                    </div>
+                    {stats.usAgentsExpiring > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-red-600">Sắp hết hạn:</span>
+                        <Badge variant="destructive" className="text-xs">
+                          {stats.usAgentsExpiring}
+                        </Badge>
+                      </div>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-between text-xs h-8 mt-2"
+                      onClick={() => router.push("/admin/us-agents")}
+                    >
+                      Quản lý US Agent
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Users className="h-4 w-4 text-purple-600" />
+                      Đội ngũ
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Operators:</span>
+                      <span className="font-semibold text-sm">{stats.operatorsCount}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Managers:</span>
+                      <span className="font-semibold text-sm">{stats.managersCount}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-between text-xs h-8 mt-2"
+                      onClick={() => router.push("/admin/users")}
+                    >
+                      Quản lý Users
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="operations" className="space-y-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-blue-600" />
+                      Dung lượng Lưu trữ
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-muted-foreground">Đã sử dụng:</span>
+                        <span className="font-semibold text-sm">
+                          {stats.currentStorageGB.toFixed(2)} / {stats.maxStorageGB} GB
+                        </span>
+                      </div>
+                      <Progress value={stats.storageUsagePercent} className="h-1.5" />
+                      <p className="text-xs">
+                        {stats.storageUsagePercent >= 90 ? (
+                          <span className="text-red-600 font-medium">⚠️ Gần đầy dung lượng</span>
+                        ) : stats.storageUsagePercent >= 75 ? (
+                          <span className="text-yellow-600 font-medium">Đã dùng hơn 75%</span>
+                        ) : (
+                          <span className="text-green-600">Dung lượng thoải mái</span>
+                        )}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-orange-600" />
+                      Cảnh báo Gần đây
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {stats.recentAlertsCount === 0 ? (
+                      <div className="text-center py-3">
+                        <CheckCircle2 className="h-6 w-6 text-green-600 mx-auto mb-1.5" />
+                        <p className="text-xs text-muted-foreground">Không có cảnh báo</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="text-2xl font-bold text-red-600">{stats.recentAlertsCount}</div>
+                        <p className="text-xs text-muted-foreground">Cảnh báo cần xử lý</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-between text-xs h-8"
+                          onClick={() => router.push("/dashboard/alerts")}
+                        >
+                          Xem chi tiết
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {recentActivity.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-gray-600" />
+                      Hoạt động Gần đây
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {recentActivity.slice(0, 3).map((activity) => {
+                        const Icon = activity.icon
+                        return (
+                          <div
+                            key={activity.id}
+                            className="flex items-start gap-2 p-2 border rounded-md hover:bg-slate-50 transition-colors"
+                          >
+                            <Icon className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-xs truncate">{activity.title}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(activity.timestamp).toLocaleString(locale, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                activity.status === "success"
+                                  ? "default"
+                                  : activity.status === "warning"
+                                    ? "secondary"
+                                    : "destructive"
+                              }
+                              className="text-xs"
+                            >
+                              {activity.status}
+                            </Badge>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-between text-xs h-8 mt-3"
+                      onClick={() => router.push("/admin/system-logs")}
+                    >
+                      Xem tất cả hoạt động
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="monitoring" className="space-y-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Waste Tracking</CardTitle>
+                    <CardDescription className="text-xs">Theo dõi hao hụt</CardDescription>
+                  </CardHeader>
+                  <CardContent>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full mt-3 bg-transparent"
-                      onClick={() => router.push("/dashboard/alerts")}
+                      className="w-full text-xs bg-transparent"
+                      onClick={() => router.push("/dashboard/waste-tracking")}
                     >
-                      Xem chi tiết →
+                      Xem báo cáo Waste
+                      <ChevronRight className="h-3.5 w-3.5 ml-auto" />
                     </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                  </CardContent>
+                </Card>
 
-          {/* Week 6-7 widgets */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <WasteDashboardWidget />
-            <ExpirationMonitorWidget />
-          </div>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Expiration Monitor</CardTitle>
+                    <CardDescription className="text-xs">Theo dõi hạn sử dụng</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs bg-transparent"
+                      onClick={() => router.push("/dashboard/expiration")}
+                    >
+                      Xem sản phẩm hết hạn
+                      <ChevronRight className="h-3.5 w-3.5 ml-auto" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
 
-          {/* Enhanced Inventory Widget */}
-          <InventoryStockWidgetEnhanced />
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Inventory Stock</CardTitle>
+                  <CardDescription className="text-xs">Tình trạng tồn kho</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs bg-transparent"
+                    onClick={() => router.push("/dashboard/inventory")}
+                  >
+                    Xem chi tiết tồn kho
+                    <ChevronRight className="h-3.5 w-3.5 ml-auto" />
+                  </Button>
+                </CardContent>
+              </Card>
 
-          {/* Audit Trail Viewer */}
-          <AuditTrailViewer />
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Audit Trail</CardTitle>
+                  <CardDescription className="text-xs">Lịch sử thay đổi</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs bg-transparent"
+                    onClick={() => router.push("/admin/audit-logs")}
+                  >
+                    Xem audit trail
+                    <ChevronRight className="h-3.5 w-3.5 ml-auto" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
 
-          {recentActivity.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-gray-600" />
-                  Hoạt động Gần đây
-                </CardTitle>
-                <CardDescription>Các thay đổi quan trọng trong hệ thống FSMA 204</CardDescription>
+          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+            <Card className="border-dashed">
+              <CardHeader className="pb-3">
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      {showAdvanced ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      Advanced Metrics & Analytics
+                    </CardTitle>
+                    <ChevronRight className={`h-4 w-4 transition-transform ${showAdvanced ? "rotate-90" : ""}`} />
+                  </Button>
+                </CollapsibleTrigger>
+                <CardDescription className="text-xs mt-1">
+                  Widgets nâng cao: Waste, Expiration, Inventory, Audit (click để {showAdvanced ? "ẩn" : "hiển thị"})
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {recentActivity.map((activity) => {
-                    const Icon = activity.icon
-                    return (
-                      <div key={activity.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                        <Icon className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm">{activity.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">{activity.description}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {new Date(activity.timestamp).toLocaleString(locale)}
-                          </p>
-                        </div>
-                        <Badge
-                          variant={
-                            activity.status === "success"
-                              ? "default"
-                              : activity.status === "warning"
-                                ? "secondary"
-                                : "destructive"
-                          }
-                        >
-                          {activity.status}
-                        </Badge>
-                      </div>
-                    )
-                  })}
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full mt-4 bg-transparent"
-                  onClick={() => router.push("/admin/system-logs")}
-                >
-                  Xem tất cả hoạt động →
-                </Button>
-              </CardContent>
+              <CollapsibleContent>
+                <CardContent className="space-y-4 pt-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <WasteDashboardWidget />
+                    <ExpirationMonitorWidget />
+                  </div>
+                  <InventoryStockWidgetEnhanced />
+                  <AuditTrailViewer />
+                </CardContent>
+              </CollapsibleContent>
             </Card>
-          )}
+          </Collapsible>
         </>
       )}
 
       {isSystemAdmin && stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card
-            className="hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => router.push("/admin/users")}
-          >
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-              <Users className="h-5 w-5 text-blue-600" />
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-blue-500"
+              onClick={() => router.push("/admin/users")}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+                <Users className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalUsers || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">Tất cả users</p>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-green-500"
+              onClick={() => router.push("/admin/companies")}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Companies</CardTitle>
+                <Building2 className="h-4 w-4 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalCompanies || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">Công ty hoạt động</p>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-purple-500"
+              onClick={() => router.push("/admin/service-packages")}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Facilities</CardTitle>
+                <Warehouse className="h-4 w-4 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalFacilities || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">Tổng số cơ sở</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Recent Users</CardTitle>
+              <CardDescription className="text-xs">Users mới đăng ký</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{stats.totalUsers || 0}</div>
-              <p className="text-xs text-muted-foreground mt-1">Tất cả users trong hệ thống</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => router.push("/admin/companies")}
-          >
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Companies</CardTitle>
-              <Building2 className="h-5 w-5 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.totalCompanies || 0}</div>
-              <p className="text-xs text-muted-foreground mt-1">Công ty đang hoạt động</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => router.push("/admin/service-packages")}
-          >
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Facilities</CardTitle>
-              <Warehouse className="h-5 w-5 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.totalFacilities || 0}</div>
-              <p className="text-xs text-muted-foreground mt-1">Tổng số cơ sở toàn hệ thống</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{isSystemAdmin ? "Recent Users" : t("admin.overview.recentUsers.title")}</CardTitle>
-          <CardDescription>
-            {isSystemAdmin ? "Users mới đăng ký gần đây" : t("admin.overview.recentUsers.description")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {stats?.recentUsers?.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">{t("admin.users.noUsers")}</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {stats?.recentUsers?.map((user) => (
-                <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium">{user.full_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {t("admin.overview.recentUsers.joined")} {new Date(user.created_at).toLocaleDateString(locale)}
-                    </p>
-                  </div>
-                  <Badge className={getRoleBadge(user.role)}>{user.role}</Badge>
+              {stats?.recentUsers?.length === 0 ? (
+                <div className="text-center py-8">
+                  <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">Chưa có users mới</p>
                 </div>
-              ))}
-            </div>
-          )}
-          <Button variant="outline" className="w-full mt-4 bg-transparent" onClick={() => router.push("/admin/users")}>
-            <Users className="h-4 w-4 mr-2" />
-            {t("admin.users.viewAll")}
-          </Button>
-        </CardContent>
-      </Card>
+              ) : (
+                <div className="space-y-2">
+                  {stats?.recentUsers?.slice(0, 5).map((user) => (
+                    <div key={user.id} className="flex items-center justify-between p-2 border rounded-md">
+                      <div>
+                        <p className="font-medium text-sm">{user.full_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(user.created_at).toLocaleDateString(locale)}
+                        </p>
+                      </div>
+                      <Badge className={`${getRoleBadge(user.role)} text-xs`}>{user.role}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full mt-3 justify-between text-xs h-8"
+                onClick={() => router.push("/admin/users")}
+              >
+                <Users className="h-3.5 w-3.5 mr-1.5" />
+                View all users
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   )
 }

@@ -6,7 +6,6 @@ import { AlertCircle, CheckCircle2 } from "lucide-react"
 import { TransformationInputSelector } from "@/components/transformation-input-selector"
 import { canCreateTransformation } from "@/lib/utils/fsma-204-validation"
 import { checkChronologicalValidity } from "@/lib/utils/chronological-validator"
-import { canCreateCTE } from "@/lib/utils/cte-permissions"
 import type { CTEType } from "@/lib/utils/cte-permissions"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -23,6 +22,12 @@ import type { OrganizationType } from "@/lib/utils/cte-permissions"
 import { calculateCurrentStock } from "@/lib/utils/calculate-current-stock"
 import { convertToBaseUnit } from "@/lib/utils/unit-converter"
 import { useToast } from "@/hooks/use-toast"
+import { validateCoolingTemperature } from "@/lib/utils/temperature-validator"
+import { KDEValidationPanel } from "@/components/kde-validation-panel"
+import { ChronologicalTimelineWidget } from "@/components/chronological-timeline-widget"
+import { InventoryStockWidgetEnhanced } from "@/components/inventory-stock-widget-enhanced"
+import { TemperatureIndicator } from "@/components/temperature-indicator"
+import { TransformationRulesHelper } from "@/components/transformation-rules-helper"
 
 interface ChronologicalCheckResult {
   valid: boolean
@@ -70,10 +75,18 @@ export default function CreateCTEPage() {
   const [stockFetched, setStockFetched] = useState<boolean>(false)
   const [stockLoading, setStockLoading] = useState<boolean>(false)
   const [chronologicalError, setChronologicalError] = useState<string | null>(null)
+  const [kdeValidationStatus, setKdeValidationStatus] = useState(true)
+  const [temperatureValue, setTemperatureValue] = useState<number | null>(null)
+  const [productType, setProductType] = useState<string>("unknown")
+  const [hasHarvestEvent, setHasHarvestEvent] = useState(false)
+  const [hasReceivingEvent, setHasReceivingEvent] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
   const { toast } = useToast()
+
+  const [totalShipped, setTotalShipped] = useState<number | null>(null)
+  const [totalTransformed, setTotalTransformed] = useState<number | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -133,6 +146,8 @@ export default function CreateCTEPage() {
       try {
         const stock = await calculateCurrentStock(lot.tlc)
         setAvailableStock(stock.current_stock)
+        setTotalShipped(stock.total_shipping)
+        setTotalTransformed(stock.total_transformation)
       } catch (err) {
         console.error("Error calculating stock:", err)
         setAvailableStock(null)
@@ -341,6 +356,73 @@ export default function CreateCTEPage() {
       return
     }
 
+    console.log("[v0] Validating KDEs for event type:", eventType)
+    const { validateKDEs } = await import("@/lib/utils/kde-validator")
+    const kdeValidation = await validateKDEs(eventType, kdeValues)
+
+    if (!kdeValidation.valid) {
+      const errorMessage =
+        `FSMA 204 VIOLATION: Thiếu thông tin bắt buộc (KDEs)\n\n` +
+        `Event Type: ${eventType}\n` +
+        `Lỗi:\n${kdeValidation.errors.map((e) => `  • ${e.error_message}`).join("\n")}\n\n` +
+        `Theo quy định FSMA 204 Section 204.4, tất cả các KDE bắt buộc phải được điền đầy đủ.`
+
+      setError(errorMessage)
+      setIsLoading(false)
+      return
+    }
+
+    // Log warnings if any
+    if (kdeValidation.warnings.length > 0) {
+      console.warn("[v0] KDE Validation warnings:", kdeValidation.warnings)
+    }
+
+    // Ngày tháng phải đúng trước khi check tồn kho
+    const eventDateInput = formData.get("event_date") as string
+    if (!eventDateInput) {
+      setError("Thiếu ngày sự kiện")
+      setIsLoading(false)
+      return
+    }
+
+    const eventDateObj = new Date(eventDateInput)
+
+    // Import chronological validator
+    const { checkChronologicalValidity } = await import("@/lib/utils/chronological-validator")
+    const chronoResult = await checkChronologicalValidity(selectedLot, eventType, eventDateObj)
+
+    if (!chronoResult.valid) {
+      setError(
+        `VI PHẠM FSMA 204: SỰ KIỆN KHÔNG ĐÚNG THỨ TỰ THỜI GIAN\n\n${chronoResult.error}\n\n${chronoResult.guidance || ""}`,
+      )
+      setIsLoading(false)
+      return
+    }
+
+    // Validate cooling temperature before submission
+    if (eventType === "cooling" || eventType === "initial_packing") {
+      const temperatureInput = formData.get("temperature")
+      const temperature = temperatureInput ? Number.parseFloat(temperatureInput as string) : null
+
+      // Get product ID from selected lot
+      const lot = lots.find((l) => l.id === selectedLot)
+      const productId = lot?.product_id || null
+
+      const tempValidation = await validateCoolingTemperature(temperature, productId, eventType)
+
+      if (!tempValidation.valid) {
+        setError(tempValidation.error || "Lỗi kiểm tra nhiệt độ")
+        setIsLoading(false)
+        return
+      }
+
+      // Show warning if temperature is close to limit
+      if (tempValidation.warning) {
+        console.warn("[v0] Temperature warning:", tempValidation.warning)
+        // Optional: show warning toast to user
+      }
+    }
+
     if ((eventType === "cooling" || eventType === "packing" || eventType === "shipping") && selectedLot) {
       const lot = lots.find((l) => l.id === selectedLot)
       if (lot) {
@@ -350,11 +432,11 @@ export default function CreateCTEPage() {
 
           if (processedQty > stockResult.current_stock) {
             setError(
-              `❌ THIẾU TỒN KHO: TLC ${lot.tlc}\n\n` +
-                `📦 Tồn kho khả dụng: ${stockResult.current_stock.toFixed(2)} kg\n` +
+              `THIẾU TỒN KHO: TLC ${lot.tlc}\n\n` +
+                `Tồn kho khả dụng: ${stockResult.current_stock.toFixed(2)} kg\n` +
                 `   = Sản xuất (${stockResult.total_production.toFixed(2)}) + Tiếp nhận (${stockResult.total_receiving.toFixed(2)}) - Vận chuyển (${stockResult.total_shipping.toFixed(2)})\n\n` +
-                `📤 Yêu cầu ${eventType === "cooling" ? "làm lạnh" : eventType === "packing" ? "đóng gói" : "vận chuyển"}: ${processedQty.toFixed(2)} kg\n` +
-                `⚠️ Thiếu: ${(processedQty - stockResult.current_stock).toFixed(2)} kg\n\n` +
+                `Yêu cầu ${eventType === "cooling" ? "làm lạnh" : eventType === "packing" ? "đóng gói" : "vận chuyển"}: ${processedQty.toFixed(2)} kg\n` +
+                `Thiếu: ${(processedQty - stockResult.current_stock).toFixed(2)} kg\n\n` +
                 `Vui lòng giảm số lượng hoặc chờ thêm sự kiện nhập hàng.`,
             )
             setIsLoading(false)
@@ -362,43 +444,23 @@ export default function CreateCTEPage() {
           }
         } catch (err) {
           console.error("[v0] Error calculating stock for validation:", err)
-          setError("Lỗi hệ thống khi kiểm tra tồn kho")
+          setError(`Lỗi hệ thống khi kiểm tra tồn kho: ${err instanceof Error ? err.message : "Unknown error"}`)
           setIsLoading(false)
           return
         }
       }
     }
 
-    if (organizationType) {
-      const { canCreate, error: typeError } = canCreateCTE(organizationType, eventType as CTEType)
-      if (!canCreate) {
-        setError(
-          `❌ FSMA 204 VIOLATION: Tổ chức "${organizationType}" không được phép tạo CTE loại "${eventType}". ` +
-            `Các CTE được phép: ${getAllowedCTETypes(organizationType)
-              .map((c) => c.label)
-              .join(", ")}`,
-        )
-        setIsLoading(false)
-        return
-      }
-    }
-
-    if (chronologicalCheck && !chronologicalCheck.valid) {
-      setError(`⏰ ${chronologicalCheck.error}\n\n${chronologicalCheck.guidance}`)
-      setIsLoading(false)
-      return
-    }
-
     if (eventType === "transformation") {
       if (transformationInputs.length === 0) {
-        setError("❌ Transformation yêu cầu ít nhất 1 mã lô nguồn đầu vào")
+        setError("Transformation yêu cầu ít nhất 1 mã lô nguồn đầu vào")
         setIsLoading(false)
         return
       }
 
       const validation = await canCreateTransformation(transformationInputs.map((i) => i.tlc_code))
       if (!validation.canCreate) {
-        setError(`❌ FSMA 204 VIOLATION:\n\n${validation.errors.join("\n\n")}`)
+        setError(`FSMA 204 VIOLATION:\n\n${validation.errors.join("\n\n")}`)
         setIsLoading(false)
         return
       }
@@ -509,347 +571,385 @@ export default function CreateCTEPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">Tạo Sự Kiện CTE</h1>
-        <p className="text-slate-500 mt-1">Theo dõi các sự kiện quan trọng trong chuỗi cung ứng</p>
-      </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-3xl font-bold mb-6">Tạo sự kiện truy xuất nguồn gốc mới</h1>
 
-      {error && (
-        <Alert variant="destructive" className="whitespace-pre-wrap">
-          <AlertCircle className="h-4 w-4" />
-          <p className="text-sm">{error}</p>
-        </Alert>
-      )}
+        {selectedLot && <ChronologicalTimelineWidget tlcId={selectedLot} className="mb-6" />}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Thông tin sự kiện</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="tlc_id">
-                  Mã TLC <span className="text-red-500">*</span>
-                </Label>
-                <Select value={selectedLot} onValueChange={handleTLCSelect} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn mã TLC" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {lots.map((lot) => (
-                      <SelectItem key={lot.id} value={lot.id}>
-                        {lot.tlc} - {lot.products?.product_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        {selectedLot && stockFetched && availableStock !== null && (
+          <InventoryStockWidgetEnhanced
+            currentStock={availableStock}
+            initialStock={availableStock + (totalShipped || 0) + (totalTransformed || 0)}
+            totalShipped={totalShipped || 0}
+            totalTransformed={totalTransformed || 0}
+            unit="kg"
+            productName={lots.find((l) => l.id === selectedLot)?.products?.product_name}
+            className="mb-6"
+          />
+        )}
 
-              <div className="space-y-2">
-                <Label htmlFor="event_type">
-                  Loại sự kiện <span className="text-red-500">*</span>
-                </Label>
-                <Select value={eventType} onValueChange={setEventType} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn loại sự kiện" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allowedCTEs.length > 0 ? (
-                      allowedCTEs.map((cte) => (
-                        <SelectItem key={cte.value} value={cte.value}>
-                          {cte.label}
+        {error && (
+          <Alert variant="destructive" className="whitespace-pre-wrap">
+            <AlertCircle className="h-4 w-4" />
+            <p className="text-sm">{error}</p>
+          </Alert>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Thông tin sự kiện</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tlc_id">
+                    Mã TLC <span className="text-red-500">*</span>
+                  </Label>
+                  <Select value={selectedLot} onValueChange={handleTLCSelect} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn mã TLC" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lots.map((lot) => (
+                        <SelectItem key={lot.id} value={lot.id}>
+                          {lot.tlc} - {lot.products?.product_name}
                         </SelectItem>
-                      ))
-                    ) : (
-                      <>
-                        <SelectItem value="harvest">Thu hoạch</SelectItem>
-                        <SelectItem value="cooling">Làm lạnh</SelectItem>
-                        <SelectItem value="packing">Đóng gói</SelectItem>
-                        <SelectItem value="receiving">Tiếp nhận</SelectItem>
-                        <SelectItem value="transformation">Chế biến</SelectItem>
-                        <SelectItem value="shipping">Vận chuyển</SelectItem>
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            {selectedLot && stockFetched && (
-              <div
-                className={`p-3 rounded-lg border ${
-                  availableStock !== null && availableStock <= 0
-                    ? "bg-red-50 border-red-300"
-                    : "bg-blue-50 border-blue-200"
-                }`}
-              >
-                {stockLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-blue-700">
-                    <div className="animate-spin h-3 w-3 border border-blue-500 border-t-transparent rounded-full" />
-                    Đang tính toán tồn kho...
-                  </div>
-                ) : availableStock !== null ? (
-                  <div className="space-y-1">
-                    <p
-                      className={`text-sm font-semibold ${
-                        availableStock <= 0
-                          ? "text-red-900"
-                          : availableStock < 100
-                            ? "text-orange-900"
-                            : "text-blue-900"
-                      }`}
-                    >
-                      {availableStock <= 0 ? "⚠️" : "📦"} Tồn kho khả dụng: {availableStock.toFixed(2)} kg
-                    </p>
-                    <p className={`text-xs ${availableStock <= 0 ? "text-red-700" : "text-blue-700"}`}>
-                      = Sản xuất + Tiếp nhận - Vận chuyển - Chế biến
-                    </p>
-                    {availableStock <= 0 && (
-                      <p className="text-xs text-red-800 font-semibold mt-2">
-                        ⛔ Hết hàng! Không thể tạo sự kiện làm lạnh, đóng gói, hoặc vận chuyển.
+                <div className="space-y-2">
+                  <Label htmlFor="event_type">
+                    Loại sự kiện <span className="text-red-500">*</span>
+                  </Label>
+                  <Select value={eventType} onValueChange={setEventType} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn loại sự kiện" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allowedCTEs.length > 0 ? (
+                        allowedCTEs.map((cte) => (
+                          <SelectItem key={cte.value} value={cte.value}>
+                            {cte.label}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <>
+                          <SelectItem value="harvest">Thu hoạch</SelectItem>
+                          <SelectItem value="cooling">Làm lạnh</SelectItem>
+                          <SelectItem value="packing">Đóng gói</SelectItem>
+                          <SelectItem value="receiving">Tiếp nhận</SelectItem>
+                          <SelectItem value="transformation">Chế biến</SelectItem>
+                          <SelectItem value="shipping">Vận chuyển</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {selectedLot && stockFetched && (
+                <div
+                  className={`p-3 rounded-lg border ${
+                    availableStock !== null && availableStock <= 0
+                      ? "bg-red-50 border-red-300"
+                      : "bg-blue-50 border-blue-200"
+                  }`}
+                >
+                  {stockLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                      <div className="animate-spin h-3 w-3 border border-blue-500 border-t-transparent rounded-full" />
+                      Đang tính toán tồn kho...
+                    </div>
+                  ) : availableStock !== null ? (
+                    <div className="space-y-1">
+                      <p
+                        className={`text-sm font-semibold ${
+                          availableStock <= 0
+                            ? "text-red-900"
+                            : availableStock < 100
+                              ? "text-orange-900"
+                              : "text-blue-900"
+                        }`}
+                      >
+                        {availableStock <= 0 ? "⚠️" : "📦"} Tồn kho khả dụng: {availableStock.toFixed(2)} kg
                       </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-red-600">Không thể tính tồn kho</p>
-                )}
-              </div>
-            )}
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="event_date">
-                  Thời gian sự kiện <span className="text-red-500">*</span>
-                </Label>
-                <Input id="event_date" name="event_date" type="datetime-local" required />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="facility_id">Cơ sở</Label>
-                <Select value={selectedFacility} onValueChange={setSelectedFacility}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn cơ sở (tùy chọn)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {facilities.map((facility) => (
-                      <SelectItem key={facility.id} value={facility.id}>
-                        {facility.name} ({facility.location_code})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="quantity_processed">
-                  Số lượng xử lý <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="quantity_processed"
-                  name="quantity_processed"
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="100.00"
-                  onChange={handleQuantityChange}
-                  className={quantityError ? "border-red-500 focus:ring-red-500" : ""}
-                />
-                {unitInfo && <p className="text-xs text-slate-500 mt-1">{unitInfo}</p>}
-                {quantityError && <p className="text-xs text-red-600 font-semibold">{quantityError}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="unit">
-                  Đơn vị <span className="text-red-500">*</span>
-                </Label>
-                <Select defaultValue="kg" onChange={(e) => handleUnitChange(e as any)}>
-                  <SelectTrigger id="unit" name="unit">
-                    <SelectValue placeholder="Chọn đơn vị" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="kg">kg (Kilogram)</SelectItem>
-                    <SelectItem value="g">g (Gram)</SelectItem>
-                    <SelectItem value="ton">Tấn</SelectItem>
-                    <SelectItem value="lbs">lbs (Pound)</SelectItem>
-                    <SelectItem value="units">Đơn vị</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="responsible_person">Người phụ trách</Label>
-                <Input id="responsible_person" name="responsible_person" placeholder="Nguyễn Văn A" />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="temperature">Nhiệt độ (°C)</Label>
-                <Input id="temperature" name="temperature" type="number" step="0.1" placeholder="20" />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Mô tả</Label>
-              <Textarea id="description" name="description" placeholder="Mô tả chi tiết về sự kiện..." rows={3} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="location_details">Chi tiết vị trí</Label>
-              <Input id="location_details" name="location_details" placeholder="Kho A, Tầng 2" />
-            </div>
-
-            {kdeFields.length > 0 && (
-              <div className="pt-4 border-t space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900">Trường dữ liệu bắt buộc (FSMA 204 KDE)</h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Các trường này là bắt buộc theo quy định FDA FSMA Section 204
-                  </p>
-                </div>
-                {kdeFields.map((kde: any) => (
-                  <div key={kde.kde_key} className="space-y-2">
-                    <Label htmlFor={`kde_${kde.kde_key}`}>
-                      {kde.kde_label}
-                      {kde.is_critical && <span className="text-red-500 ml-1">*</span>}
-                    </Label>
-                    {kde.help_text && <p className="text-xs text-slate-500 mb-1">{kde.help_text}</p>}
-                    {kde.field_type === "textarea" ? (
-                      <Textarea
-                        id={`kde_${kde.kde_key}`}
-                        value={kdeValues[kde.kde_key] || ""}
-                        onChange={(e) =>
-                          setKdeValues((prev) => ({
-                            ...prev,
-                            [kde.kde_key]: e.target.value,
-                          }))
-                        }
-                        required={kde.is_critical}
-                        placeholder={kde.kde_label}
-                        rows={2}
-                      />
-                    ) : (
-                      <Input
-                        id={`kde_${kde.kde_key}`}
-                        type={kde.field_type || "text"}
-                        value={kdeValues[kde.kde_key] || ""}
-                        onChange={(e) =>
-                          setKdeValues((prev) => ({
-                            ...prev,
-                            [kde.kde_key]: e.target.value,
-                          }))
-                        }
-                        required={kde.is_critical}
-                        placeholder={kde.kde_label}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {eventType === "transformation" && (
-              <div className="pt-4 border-t">
-                <TransformationInputSelector
-                  value={transformationInputs}
-                  onChange={setTransformationInputs}
-                  errors={transformationErrors}
-                  setErrors={setTransformationErrors}
-                />
-              </div>
-            )}
-
-            <div className="flex gap-4 pt-4">
-              <Button
-                type="submit"
-                disabled={
-                  isLoading ||
-                  !!quantityError ||
-                  (availableStock !== null &&
-                    availableStock <= 0 &&
-                    ["cooling", "packing", "shipping"].includes(eventType))
-                }
-              >
-                {isLoading ? "Đang tạo..." : "Tạo sự kiện"}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => router.back()} className="bg-transparent">
-                Hủy
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      {chronologicalCheck && !chronologicalCheck.valid && (
-        <Alert variant="destructive" className="border-red-300 bg-red-50">
-          <AlertCircle className="h-5 w-5" />
-          <AlertTitle className="font-semibold">Vi phạm thứ tự thời gian (Chronological Violation)</AlertTitle>
-          <AlertDescription className="mt-2 space-y-3">
-            {/* Main error message */}
-            <p className="font-medium">{chronologicalCheck.error}</p>
-
-            {/* Detailed comparison table */}
-            <div className="bg-white rounded-lg p-3 border border-red-200 mt-2">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground mb-1">Sự kiện gần nhất:</p>
-                  <p className="font-semibold text-foreground">
-                    {chronologicalCheck.last_event_type_vi || chronologicalCheck.last_event_type}
-                  </p>
-                  <p className="text-primary font-mono">
-                    {chronologicalCheck.last_event_date_formatted ||
-                      (chronologicalCheck.last_event_date &&
-                        new Date(chronologicalCheck.last_event_date).toLocaleString("vi-VN"))}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground mb-1">Sự kiện đang tạo:</p>
-                  <p className="font-semibold text-foreground">
-                    {chronologicalCheck.attempted_event_type_vi || eventType}
-                  </p>
-                  <p className="text-destructive font-mono">
-                    {chronologicalCheck.attempted_event_date_formatted || new Date().toLocaleString("vi-VN")}
-                  </p>
-                </div>
-              </div>
-
-              {/* Time difference */}
-              {chronologicalCheck.time_difference_human && (
-                <div className="mt-3 pt-3 border-t border-red-200">
-                  <p className="text-sm">
-                    <span className="text-muted-foreground">Chênh lệch: </span>
-                    <span className="font-semibold text-destructive">
-                      {chronologicalCheck.time_difference_human} trước sự kiện gần nhất
-                    </span>
-                  </p>
+                      <p className={`text-xs ${availableStock <= 0 ? "text-red-700" : "text-blue-700"}`}>
+                        = Sản xuất + Tiếp nhận - Vận chuyển - Chế biến
+                      </p>
+                      {availableStock <= 0 && (
+                        <p className="text-xs text-red-800 font-semibold mt-2">
+                          ⛔ Hết hàng! Không thể tạo sự kiện làm lạnh, đóng gói, hoặc vận chuyển.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-600">Không thể tính tồn kho</p>
+                  )}
                 </div>
               )}
-            </div>
 
-            {/* Guidance */}
-            {chronologicalCheck.guidance && (
-              <p className="text-sm text-muted-foreground bg-amber-50 p-2 rounded border border-amber-200">
-                <strong>Hướng dẫn:</strong> {chronologicalCheck.guidance}
-              </p>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="event_date">
+                    Thời gian sự kiện <span className="text-red-500">*</span>
+                  </Label>
+                  <Input id="event_date" name="event_date" type="datetime-local" required />
+                </div>
 
-      {chronologicalCheck && chronologicalCheck.valid && !chronologicalCheck.first_event && (
-        <Alert className="border-green-300 bg-green-50">
-          <CheckCircle2 className="h-5 w-5 text-green-600" />
-          <AlertTitle className="text-green-800">Thời gian hợp lệ</AlertTitle>
-          <AlertDescription className="text-green-700">
-            {chronologicalCheck.message ||
-              `Sự kiện này xảy ra ${chronologicalCheck.time_since_last_event_human || "sau"} sự kiện "${chronologicalCheck.last_event_type_vi}" trước đó (${chronologicalCheck.last_event_date_formatted}).`}
-          </AlertDescription>
-        </Alert>
-      )}
+                <div className="space-y-2">
+                  <Label htmlFor="facility_id">Cơ sở</Label>
+                  <Select value={selectedFacility} onValueChange={setSelectedFacility}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn cơ sở (tùy chọn)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {facilities.map((facility) => (
+                        <SelectItem key={facility.id} value={facility.id}>
+                          {facility.name} ({facility.location_code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="quantity_processed">
+                    Số lượng xử lý <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="quantity_processed"
+                    name="quantity_processed"
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="100.00"
+                    onChange={handleQuantityChange}
+                    className={quantityError ? "border-red-500 focus:ring-red-500" : ""}
+                  />
+                  {unitInfo && <p className="text-xs text-slate-500 mt-1">{unitInfo}</p>}
+                  {quantityError && <p className="text-xs text-red-600 font-semibold">{quantityError}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="unit">
+                    Đơn vị <span className="text-red-500">*</span>
+                  </Label>
+                  <Select defaultValue="kg" onChange={(e) => handleUnitChange(e as any)}>
+                    <SelectTrigger id="unit" name="unit">
+                      <SelectValue placeholder="Chọn đơn vị" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="kg">kg (Kilogram)</SelectItem>
+                      <SelectItem value="g">g (Gram)</SelectItem>
+                      <SelectItem value="ton">Tấn</SelectItem>
+                      <SelectItem value="lbs">lbs (Pound)</SelectItem>
+                      <SelectItem value="units">Đơn vị</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="responsible_person">Người phụ trách</Label>
+                  <Input id="responsible_person" name="responsible_person" placeholder="Nguyễn Văn A" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="temperature">Nhiệt độ (°C)</Label>
+                  <Input
+                    id="temperature"
+                    name="temperature"
+                    type="number"
+                    step="0.1"
+                    placeholder="20"
+                    onChange={(e) => setTemperatureValue(e.target.value ? Number.parseFloat(e.target.value) : null)}
+                  />
+                  <TemperatureIndicator
+                    temperature={temperatureValue}
+                    productType={productType}
+                    eventType={eventType}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Mô tả</Label>
+                <Textarea id="description" name="description" placeholder="Mô tả chi tiết về sự kiện..." rows={3} />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="location_details">Chi tiết vị trí</Label>
+                <Input id="location_details" name="location_details" placeholder="Kho A, Tầng 2" />
+              </div>
+
+              {kdeFields.length > 0 && (
+                <div className="pt-4 border-t space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">Trường dữ liệu bắt buộc (FSMA 204 KDE)</h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Các trường này là bắt buộc theo quy định FDA FSMA Section 204
+                    </p>
+                  </div>
+
+                  {kdeFields.map((kde: any) => (
+                    <div key={kde.kde_key} className="space-y-2">
+                      <Label htmlFor={`kde_${kde.kde_key}`}>
+                        {kde.kde_label}
+                        {kde.is_critical && <span className="text-red-500 ml-1">*</span>}
+                      </Label>
+                      {kde.help_text && <p className="text-xs text-slate-500 mb-1">{kde.help_text}</p>}
+                      {kde.field_type === "textarea" ? (
+                        <Textarea
+                          id={`kde_${kde.kde_key}`}
+                          value={kdeValues[kde.kde_key] || ""}
+                          onChange={(e) =>
+                            setKdeValues((prev) => ({
+                              ...prev,
+                              [kde.kde_key]: e.target.value,
+                            }))
+                          }
+                          required={kde.is_critical}
+                          placeholder={kde.kde_label}
+                          rows={2}
+                        />
+                      ) : (
+                        <Input
+                          id={`kde_${kde.kde_key}`}
+                          type={kde.field_type || "text"}
+                          value={kdeValues[kde.kde_key] || ""}
+                          onChange={(e) =>
+                            setKdeValues((prev) => ({
+                              ...prev,
+                              [kde.kde_key]: e.target.value,
+                            }))
+                          }
+                          required={kde.is_critical}
+                          placeholder={kde.kde_label}
+                        />
+                      )}
+                    </div>
+                  ))}
+                  <KDEValidationPanel
+                    eventType={eventType}
+                    kdeValues={kdeValues}
+                    onValidationChange={setKdeValidationStatus}
+                  />
+                </div>
+              )}
+
+              {eventType === "transformation" && (
+                <div className="pt-4 border-t">
+                  <TransformationInputSelector
+                    value={transformationInputs}
+                    onChange={setTransformationInputs}
+                    errors={transformationErrors}
+                    setErrors={setTransformationErrors}
+                  />
+                  <TransformationRulesHelper
+                    eventType={eventType}
+                    hasHarvestEvent={hasHarvestEvent}
+                    hasReceivingEvent={hasReceivingEvent}
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-4 pt-4">
+                <Button
+                  type="submit"
+                  disabled={
+                    isLoading ||
+                    !kdeValidationStatus ||
+                    !!quantityError ||
+                    !!chronologicalError ||
+                    (availableStock !== null &&
+                      availableStock <= 0 &&
+                      ["cooling", "packing", "shipping"].includes(eventType))
+                  }
+                >
+                  {isLoading ? "Đang tạo..." : "Tạo sự kiện"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => router.back()} className="bg-transparent">
+                  Hủy
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        {chronologicalCheck && !chronologicalCheck.valid && (
+          <Alert variant="destructive" className="border-red-300 bg-red-50">
+            <AlertCircle className="h-5 w-5" />
+            <AlertTitle className="font-semibold">Vi phạm thứ tự thời gian (Chronological Violation)</AlertTitle>
+            <AlertDescription className="mt-2 space-y-3">
+              {/* Main error message */}
+              <p className="font-medium">{chronologicalCheck.error}</p>
+
+              {/* Detailed comparison table */}
+              <div className="bg-white rounded-lg p-3 border border-red-200 mt-2">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground mb-1">Sự kiện gần nhất:</p>
+                    <p className="font-semibold text-foreground">
+                      {chronologicalCheck.last_event_type_vi || chronologicalCheck.last_event_type}
+                    </p>
+                    <p className="text-primary font-mono">
+                      {chronologicalCheck.last_event_date_formatted ||
+                        (chronologicalCheck.last_event_date &&
+                          new Date(chronologicalCheck.last_event_date).toLocaleString("vi-VN"))}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1">Sự kiện đang tạo:</p>
+                    <p className="font-semibold text-foreground">
+                      {chronologicalCheck.attempted_event_type_vi || eventType}
+                    </p>
+                    <p className="text-destructive font-mono">
+                      {chronologicalCheck.attempted_event_date_formatted || new Date().toLocaleString("vi-VN")}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Time difference */}
+                {chronologicalCheck.time_difference_human && (
+                  <div className="mt-3 pt-3 border-t border-red-200">
+                    <p className="text-sm">
+                      <span className="text-muted-foreground">Chênh lệch: </span>
+                      <span className="font-semibold text-destructive">
+                        {chronologicalCheck.time_difference_human} trước sự kiện gần nhất
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Guidance */}
+              {chronologicalCheck.guidance && (
+                <p className="text-sm text-muted-foreground bg-amber-50 p-2 rounded border border-amber-200">
+                  <strong>Hướng dẫn:</strong> {chronologicalCheck.guidance}
+                </p>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {chronologicalCheck && chronologicalCheck.valid && !chronologicalCheck.first_event && (
+          <Alert className="border-green-300 bg-green-50">
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <AlertTitle className="text-green-800">Thời gian hợp lệ</AlertTitle>
+            <AlertDescription className="text-green-700">
+              {chronologicalCheck.message ||
+                `Sự kiện này xảy ra ${chronologicalCheck.time_since_last_event_human || "sau"} sự kiện "${chronologicalCheck.last_event_type_vi}" trước đó (${chronologicalCheck.last_event_date_formatted}).`}
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
     </div>
   )
 }

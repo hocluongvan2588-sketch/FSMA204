@@ -91,7 +91,7 @@ export default async function AdminMySubscriptionPage() {
       )
     `)
     .eq("company_id", profile.company_id)
-    .eq("status", "active")
+    .eq("status", "active") // Fixed column name from subscription_status to status
     .order("start_date", { ascending: false })
     .limit(1)
     .maybeSingle()

@@ -71,16 +71,18 @@ export default async function AdminPricingPage() {
     const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
 
     if (profile?.company_id) {
-      const { data: subscription } = await supabase
+      const { data: subscription, error } = await supabase
         .from("company_subscriptions")
         .select("service_packages(package_code)")
         .eq("company_id", profile.company_id)
-        .eq("subscription_status", "active")
+        .eq("status", "active") // Changed from subscription_status to status
         .order("start_date", { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      if (subscription?.service_packages) {
+      if (error) {
+        console.error("Error fetching subscription:", error)
+      } else if (subscription?.service_packages) {
         currentPackageCode = subscription.service_packages.package_code
       }
     }

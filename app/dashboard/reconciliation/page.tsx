@@ -39,13 +39,36 @@ export default async function ReconciliationPage() {
     .limit(50)
 
   const transformationIssues = (transformationRecords || []).map((record) => {
-    const inputQty = record.transformation_inputs?.reduce((sum, input) => sum + (input.quantity || 0), 0) || 0
+    const inputs = record.transformation_inputs || []
+    const inputQty = inputs.reduce((sum, input) => sum + (input.quantity || 0), 0) || 0
 
     const outputQty = Number.parseFloat(
       record.key_data_elements?.find((k: any) => k.kde_key === "output_quantity")?.kde_value || "0",
     )
 
-    const wastePercent = record.transformation_inputs?.[0]?.waste_percentage || 5
+    let wastePercent = 0
+    let hasWasteData = false
+
+    if (inputs.length > 0) {
+      const totalWaste = inputs.reduce((sum, input) => {
+        const qty = input.quantity || 0
+        const waste = input.waste_percentage
+        if (waste !== null && waste !== undefined) {
+          hasWasteData = true
+          return sum + qty * (waste / 100)
+        }
+        return sum
+      }, 0)
+
+      if (hasWasteData && inputQty > 0) {
+        wastePercent = (totalWaste / inputQty) * 100
+      }
+    }
+
+    if (!hasWasteData) {
+      console.warn(`[v0] No waste data for transformation ${record.id}, using 0% (needs review)`)
+    }
+
     const expectedOutput = inputQty * (1 - wastePercent / 100)
     const difference = Math.abs(outputQty - expectedOutput)
     const isValid = difference < expectedOutput * 0.05 // 5% tolerance
@@ -60,6 +83,8 @@ export default async function ReconciliationPage() {
       expectedOutput,
       difference,
       isValid,
+      wastePercent,
+      hasWasteData,
     }
   })
 
@@ -167,6 +192,7 @@ export default async function ReconciliationPage() {
                   <th className="text-right py-3 px-4 text-sm font-semibold">Input (kg)</th>
                   <th className="text-right py-3 px-4 text-sm font-semibold">Output (kg)</th>
                   <th className="text-right py-3 px-4 text-sm font-semibold">Dự kiến (kg)</th>
+                  <th className="text-right py-3 px-4 text-sm font-semibold">Waste %</th>
                   <th className="text-right py-3 px-4 text-sm font-semibold">Chênh lệch</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold">Trạng thái</th>
                 </tr>
@@ -180,6 +206,14 @@ export default async function ReconciliationPage() {
                     <td className="py-3 px-4 text-sm text-right">{issue.inputQty.toFixed(2)}</td>
                     <td className="py-3 px-4 text-sm text-right">{issue.outputQty.toFixed(2)}</td>
                     <td className="py-3 px-4 text-sm text-right">{issue.expectedOutput.toFixed(2)}</td>
+                    <td className="py-3 px-4 text-sm text-right">
+                      {issue.wastePercent.toFixed(1)}%
+                      {!issue.hasWasteData && (
+                        <span className="text-xs text-amber-600 ml-1" title="Không có dữ liệu waste, cần review">
+                          ⚠️
+                        </span>
+                      )}
+                    </td>
                     <td
                       className={`py-3 px-4 text-sm text-right font-medium ${
                         issue.isValid ? "text-emerald-600" : "text-red-600"

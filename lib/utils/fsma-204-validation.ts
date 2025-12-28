@@ -58,7 +58,7 @@ export async function validateSourceTLC(tlcCode: string, companyId?: string): Pr
       console.error("[v0] TLC validation error:", error)
       return {
         valid: false,
-        error: "❌ Mã lô nguồn không hợp lệ - Mã lô không tồn tại trong hệ thống",
+        error: "Mã lô nguồn không hợp lệ - Mã lô không tồn tại trong hệ thống",
       }
     }
 
@@ -66,7 +66,7 @@ export async function validateSourceTLC(tlcCode: string, companyId?: string): Pr
     if (data.status !== "active") {
       return {
         valid: false,
-        error: `⛔ Mã lô nguồn không hợp lệ - Trạng thái lô là "${data.status}" (cần "active")`,
+        error: `Mã lô nguồn không hợp lệ - Trạng thái lô là "${data.status}" (cần "active")`,
       }
     }
 
@@ -74,23 +74,31 @@ export async function validateSourceTLC(tlcCode: string, companyId?: string): Pr
     if (data.available_quantity <= 0) {
       return {
         valid: false,
-        error: "📦 Mã lô nguồn không hợp lệ - Lô đã hết hàng (số lượng khả dụng: 0)",
+        error: "Mã lô nguồn không hợp lệ - Lô đã hết hàng (số lượng khả dụng: 0)",
       }
     }
 
-    // Check if TLC has receiving event (FSMA 204 requirement)
-    const { data: receivingEvent, error: receivingError } = await supabase
+    // FSMA 204: Farms can transform their own harvest without receiving event
+    const { data: harvestEvent } = await supabase
+      .from("critical_tracking_events")
+      .select("id, event_date, event_type")
+      .eq("tlc_id", data.id)
+      .eq("event_type", "harvest")
+      .maybeSingle()
+
+    const { data: receivingEvent } = await supabase
       .from("critical_tracking_events")
       .select("id, event_date, event_type")
       .eq("tlc_id", data.id)
       .eq("event_type", "receiving")
-      .single()
+      .maybeSingle()
 
-    if (receivingError || !receivingEvent) {
+    // TLC must have at least ONE of: Harvest OR Receiving
+    if (!harvestEvent && !receivingEvent) {
       return {
         valid: false,
         error:
-          "🔗 FSMA 204 VIOLATION: Mã lô nguồn không hợp lệ - Lô chưa có sự kiện Receiving. Theo quy định FSMA 204, chỉ có thể chế biến (Transformation) từ lô đã qua Receiving.",
+          "FSMA 204 VIOLATION: Mã lô nguồn không hợp lệ - Lô phải có sự kiện Harvest (nếu tự sản xuất) hoặc Receiving (nếu nhập từ bên ngoài) trước khi chế biến.",
       }
     }
 
@@ -137,7 +145,7 @@ export async function canCreateTransformation(inputTLCs: string[]): Promise<{
   if (inputTLCs.length === 0) {
     return {
       canCreate: false,
-      errors: ["⚠️ Transformation yêu cầu ít nhất 1 mã lô nguồn đầu vào"],
+      errors: ["Transformation yêu cầu ít nhất 1 mã lô nguồn đầu vào"],
       validTLCs: [],
     }
   }

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
+import { calculateExpiryDate, getExpirationStatus, getExpirationAlertColor } from "@/lib/utils/expiration-calculator"
 
 export default function CreateLotPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -18,24 +19,46 @@ export default function CreateLotPage() {
   const [facilities, setFacilities] = useState<any[]>([])
   const [selectedProduct, setSelectedProduct] = useState("")
   const [selectedFacility, setSelectedFacility] = useState("")
+  const [productionDate, setProductionDate] = useState("")
+  const [calculatedExpiryDate, setCalculatedExpiryDate] = useState<Date | null>(null)
+  const [expiryStatus, setExpiryStatus] = useState<"good" | "monitor" | "expiring_soon" | "expired" | null>(null)
+  const [shelfLifeDays, setShelfLifeDays] = useState<number | null>(null)
+
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
     const fetchData = async () => {
-      // Fetch products
       const { data: productsData } = await supabase
         .from("products")
-        .select("id, product_name, product_code")
+        .select("id, product_name, product_code, shelf_life_days, requires_expiry_date")
         .order("product_name")
       setProducts(productsData || [])
 
-      // Fetch facilities
       const { data: facilitiesData } = await supabase.from("facilities").select("id, name, location_code").order("name")
       setFacilities(facilitiesData || [])
     }
     fetchData()
   }, [])
+
+  useEffect(() => {
+    if (selectedProduct && productionDate) {
+      const product = products.find((p) => p.id === selectedProduct)
+      if (product?.shelf_life_days) {
+        const prodDate = new Date(productionDate)
+        const expiry = calculateExpiryDate(prodDate, product.shelf_life_days)
+        setCalculatedExpiryDate(expiry)
+        setShelfLifeDays(product.shelf_life_days)
+
+        const { status } = getExpirationStatus(expiry)
+        setExpiryStatus(status)
+      } else {
+        setCalculatedExpiryDate(null)
+        setExpiryStatus(null)
+        setShelfLifeDays(null)
+      }
+    }
+  }, [selectedProduct, productionDate, products])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -52,13 +75,17 @@ export default function CreateLotPage() {
       return
     }
 
+    const expiryDateValue = calculatedExpiryDate
+      ? calculatedExpiryDate.toISOString().split("T")[0]
+      : (formData.get("expiry_date") as string) || null
+
     const data = {
       tlc: formData.get("tlc") as string,
       product_id: selectedProduct,
       facility_id: selectedFacility,
       batch_number: formData.get("batch_number") as string,
       production_date: formData.get("production_date") as string,
-      expiry_date: (formData.get("expiry_date") as string) || null,
+      expiry_date: expiryDateValue,
       quantity: Number.parseFloat(formData.get("quantity") as string),
       unit: formData.get("unit") as string,
       status: "active",
@@ -112,6 +139,9 @@ export default function CreateLotPage() {
                       {products.map((product) => (
                         <SelectItem key={product.id} value={product.id}>
                           {product.product_name} ({product.product_code})
+                          {product.shelf_life_days && (
+                            <span className="text-xs text-slate-500 ml-2">({product.shelf_life_days} ngày)</span>
+                          )}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -149,12 +179,39 @@ export default function CreateLotPage() {
                   <Label htmlFor="production_date">
                     Ngày sản xuất <span className="text-red-500">*</span>
                   </Label>
-                  <Input id="production_date" name="production_date" type="date" required />
+                  <Input
+                    id="production_date"
+                    name="production_date"
+                    type="date"
+                    required
+                    value={productionDate}
+                    onChange={(e) => setProductionDate(e.target.value)}
+                  />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="expiry_date">Ngày hết hạn</Label>
-                  <Input id="expiry_date" name="expiry_date" type="date" />
+                  <Label htmlFor="expiry_date">
+                    Ngày hết hạn
+                    {shelfLifeDays && (
+                      <span className="text-xs text-slate-500 ml-2">(Tự động: +{shelfLifeDays} ngày)</span>
+                    )}
+                  </Label>
+                  <Input
+                    id="expiry_date"
+                    name="expiry_date"
+                    type="date"
+                    value={calculatedExpiryDate ? calculatedExpiryDate.toISOString().split("T")[0] : ""}
+                    readOnly={!!calculatedExpiryDate}
+                    className={calculatedExpiryDate ? "bg-slate-50 cursor-not-allowed" : ""}
+                  />
+                  {expiryStatus && calculatedExpiryDate && (
+                    <div className={`text-xs px-2 py-1 rounded border ${getExpirationAlertColor(expiryStatus)}`}>
+                      {expiryStatus === "good" && "✅ Hạn sử dụng tốt"}
+                      {expiryStatus === "monitor" && "ℹ️ Cần theo dõi hạn sử dụng"}
+                      {expiryStatus === "expiring_soon" && "⚠️ Sắp hết hạn"}
+                      {expiryStatus === "expired" && "❌ Đã hết hạn"}
+                    </div>
+                  )}
                 </div>
               </div>
 

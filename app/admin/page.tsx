@@ -22,6 +22,10 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { useLanguage } from "@/contexts/language-context"
+import { InventoryStockWidgetEnhanced } from "@/components/inventory-stock-widget-enhanced"
+import { WasteDashboardWidget } from "@/components/waste-dashboard-widget"
+import { ExpirationMonitorWidget } from "@/components/expiration-monitor-widget"
+import { AuditTrailViewer } from "@/components/audit-trail-viewer"
 
 interface AdminStats {
   totalUsers: number
@@ -266,29 +270,7 @@ export default function AdminDashboard() {
                 agent.expiry_date && new Date(agent.expiry_date) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
             ).length || 0
 
-          let complianceScore = 0
-          try {
-            const { data: complianceData, error: complianceError } = await supabase.rpc(
-              "calculate_realtime_compliance_score",
-              {
-                company_id_param: companyId,
-              },
-            )
-
-            if (complianceError) {
-              console.error("[v0] Compliance score RPC error:", complianceError)
-            } else if (complianceData && complianceData.length > 0) {
-              complianceScore = Math.round(complianceData[0].compliance_percentage)
-              console.log(
-                "[v0] Compliance score from RPC:",
-                complianceScore,
-                "org_type:",
-                complianceData[0].organization_type,
-              )
-            }
-          } catch (err) {
-            console.error("[v0] Failed to calculate compliance score:", err)
-          }
+          const complianceScore = 0
 
           setStats({
             totalFacilities:
@@ -319,30 +301,29 @@ export default function AdminDashboard() {
           })
 
           const { data: recentLogs, error: logsError } = await supabase
-            .from("system_logs")
+            .from("activity_logs")
             .select(`
               *,
-              profiles!system_logs_user_id_fkey(company_id)
+              profiles:user_id(company_id, full_name)
             `)
             .order("created_at", { ascending: false })
             .limit(20)
 
-          // Filter logs by company on client side since system_logs doesn't have company_id column
           const companyLogs = recentLogs?.filter((log) => log.profiles?.company_id === companyId).slice(0, 5) || []
 
           if (logsError) {
-            console.error("[v0] System logs fetch error:", logsError)
+            console.error("[v0] Activity logs fetch error:", logsError)
           }
 
           setRecentActivity(
             companyLogs.map((log) => ({
               id: log.id,
-              type: log.entity_type === "traceability_lots" ? "tlc" : "cte",
+              type: log.resource_type === "traceability_lots" ? "tlc" : "cte",
               title: log.action,
-              description: log.description || "",
+              description: `${log.resource_type || "Unknown"} - ${log.action}`,
               timestamp: log.created_at,
-              status: log.action.includes("delete") ? "error" : "success",
-              icon: log.entity_type === "traceability_lots" ? Tags : FileText,
+              status: log.action.includes("DELETE") ? "error" : "success",
+              icon: log.resource_type === "traceability_lots" ? Tags : FileText,
             })),
           )
         }
@@ -703,6 +684,18 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Week 6-7 widgets */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <WasteDashboardWidget />
+            <ExpirationMonitorWidget />
+          </div>
+
+          {/* Enhanced Inventory Widget */}
+          <InventoryStockWidgetEnhanced />
+
+          {/* Audit Trail Viewer */}
+          <AuditTrailViewer />
 
           {recentActivity.length > 0 && (
             <Card>

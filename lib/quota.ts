@@ -49,6 +49,7 @@ export async function getCompanySubscription(companyId: string): Promise<Subscri
       *,
       service_packages!inner (
         name,
+        package_code,
         features,
         limits
       )
@@ -65,27 +66,63 @@ export async function getCompanySubscription(companyId: string): Promise<Subscri
   }
 
   if (!subscription || !subscription.service_packages) {
-    console.log("[v0] No active/trial subscription found for company:", companyId, "- defaulting to FREE plan")
-    return {
-      maxUsers: 5,
-      maxFacilities: 1,
-      maxProducts: 10,
-      maxStorageGb: 1,
-      currentUsers: 0,
-      currentFacilities: 0,
-      currentProducts: 0,
-      currentStorageGb: 0,
-      subscriptionStatus: "free_default",
-      packageName: "Free (Default)",
-      features: {
-        fda: false,
-        agent: false,
-        cte: true,
-        reporting: false,
-        api: false,
-        branding: false,
-      },
+    console.log("[v0] No subscription found for company:", companyId, "- attempting to auto-create FREE subscription")
+
+    // Try to fetch FREE package and auto-assign
+    const { data: freePackage } = await supabase
+      .from("service_packages")
+      .select("id, name, limits, features")
+      .eq("package_code", "FREE") // Use package_code
+      .eq("is_active", true)
+      .single()
+
+    if (freePackage) {
+      // Auto-create FREE subscription
+      const startDate = new Date()
+      const endDate = new Date()
+      endDate.setFullYear(endDate.getFullYear() + 100)
+
+      await supabase.from("company_subscriptions").insert({
+        company_id: companyId,
+        package_id: freePackage.id,
+        status: "active",
+        billing_cycle: "monthly",
+        start_date: startDate.toISOString().split("T")[0],
+        end_date: endDate.toISOString().split("T")[0],
+        price_paid: 0,
+        auto_renew: false,
+      })
+
+      console.log("[v0] Auto-created FREE subscription for company:", companyId)
+
+      // Return FREE package limits
+      const limits = freePackage.limits || {}
+      const features = freePackage.features || {}
+
+      return {
+        maxUsers: limits.max_users || 5,
+        maxFacilities: limits.max_facilities || 1,
+        maxProducts: limits.max_products || 10,
+        maxStorageGb: limits.max_storage_gb || 1,
+        currentUsers: 0,
+        currentFacilities: 0,
+        currentProducts: 0,
+        currentStorageGb: 0,
+        subscriptionStatus: "active",
+        packageName: freePackage.name,
+        features: {
+          fda: features.fda_registration === true,
+          agent: features.us_agent === true,
+          cte: features.cte_tracking === true,
+          reporting: features.advanced_reporting === true,
+          api: features.api_access === true,
+          branding: features.custom_branding === true,
+        },
+      }
     }
+
+    console.error("[v0] CRITICAL: No FREE package found in database for company:", companyId)
+    return null
   }
 
   const pkg = subscription.service_packages as any

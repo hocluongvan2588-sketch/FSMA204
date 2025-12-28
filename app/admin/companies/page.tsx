@@ -5,15 +5,27 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { useLanguage } from "@/contexts/language-context"
-import { Building2, Users } from "lucide-react"
+import { Building2, Users, Pencil, Trash2 } from "lucide-react"
 import { isSystemAdmin } from "@/lib/auth/roles"
 import { PlanBadge } from "@/components/plan-badge"
+import { useToast } from "@/hooks/use-toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface Company {
   id: string
   name: string
-  tax_id: string
+  registration_number: string
   email: string
   phone: string
   created_at: string
@@ -25,9 +37,19 @@ interface Company {
 
 export default function AdminCompaniesPage() {
   const { locale, t } = useLanguage()
+  const { toast } = useToast()
   const [companies, setCompanies] = useState<Company[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editForm, setEditForm] = useState({
+    name: "",
+    registration_number: "",
+    email: "",
+    phone: "",
+    address: "",
+  })
 
   useEffect(() => {
     loadCurrentUser()
@@ -68,7 +90,6 @@ export default function AdminCompaniesPage() {
       const { data: companiesData } = await companiesQuery
 
       if (companiesData) {
-        // Load counts for each company
         const companiesWithCounts = await Promise.all(
           companiesData.map(async (company) => {
             const [facilitiesCount, usersCount] = await Promise.all([
@@ -92,6 +113,83 @@ export default function AdminCompaniesPage() {
       console.error("Error loading companies:", error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleEditCompany = (company: Company) => {
+    setEditingCompany(company)
+    setEditForm({
+      name: company.name,
+      registration_number: company.registration_number || "",
+      email: company.email || "",
+      phone: company.phone || "",
+      address: "",
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingCompany) return
+
+    try {
+      const response = await fetch(`/api/admin/companies/${editingCompany.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to update company")
+      }
+
+      toast({
+        title: "✅ Cập nhật thành công",
+        description: "Thông tin công ty đã được cập nhật",
+      })
+
+      setIsEditDialogOpen(false)
+      loadCompanies()
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi cập nhật",
+        description: error.message,
+      })
+    }
+  }
+
+  const handleDeleteCompany = async (company: Company) => {
+    if (
+      !confirm(
+        `Bạn có chắc chắn muốn xóa công ty "${company.name}"?\n\nLưu ý: Công ty phải không có user và facility mới có thể xóa.`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/companies/${company.id}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to delete company")
+      }
+
+      toast({
+        title: "✅ Xóa thành công",
+        description: `Đã xóa công ty "${company.name}"`,
+      })
+
+      loadCompanies()
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "❌ Lỗi xóa công ty",
+        description: error.message,
+      })
     }
   }
 
@@ -133,7 +231,6 @@ export default function AdminCompaniesPage() {
         </div>
       )}
 
-      {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -168,7 +265,6 @@ export default function AdminCompaniesPage() {
         </Card>
       </div>
 
-      {/* Companies Table */}
       <Card>
         <CardHeader>
           <CardTitle>{t("company.title")}</CardTitle>
@@ -190,6 +286,9 @@ export default function AdminCompaniesPage() {
                   <TableHead>{t("company.info.facilities")}</TableHead>
                   <TableHead>{t("admin.users.title")}</TableHead>
                   <TableHead>{t("common.fields.createdAt")}</TableHead>
+                  {currentUserProfile && isSystemAdmin(currentUserProfile.role) && (
+                    <TableHead className="text-right">Hành động</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -197,7 +296,7 @@ export default function AdminCompaniesPage() {
                   <TableRow key={company.id}>
                     <TableCell className="font-medium">{company.name}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{company.tax_id}</Badge>
+                      <Badge variant="outline">{company.registration_number}</Badge>
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
@@ -217,6 +316,23 @@ export default function AdminCompaniesPage() {
                     <TableCell>
                       {new Date(company.created_at).toLocaleDateString(locale === "vi" ? "vi-VN" : "en-US")}
                     </TableCell>
+                    {currentUserProfile && isSystemAdmin(currentUserProfile.role) && (
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => handleEditCompany(company)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteCompany(company)}
+                            disabled={(company._count?.users || 0) > 0 || (company._count?.facilities || 0) > 0}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -224,6 +340,62 @@ export default function AdminCompaniesPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa công ty</DialogTitle>
+            <DialogDescription>Cập nhật thông tin công ty</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Tên công ty *</Label>
+              <Input
+                id="name"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                placeholder="Nhập tên công ty"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="registration_number">Mã số thuế</Label>
+              <Input
+                id="registration_number"
+                value={editForm.registration_number}
+                onChange={(e) => setEditForm({ ...editForm, registration_number: e.target.value })}
+                placeholder="Nhập mã số thuế"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                placeholder="Nhập email công ty"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Số điện thoại</Label>
+              <Input
+                id="phone"
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                placeholder="Nhập số điện thoại"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Hủy
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={!editForm.name}>
+              Lưu thay đổi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

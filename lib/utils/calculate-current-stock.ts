@@ -126,8 +126,18 @@ export async function calculateCurrentStock(tlcCode: string): Promise<StockCalcu
     try {
       const inKg = convertToBaseUnit(t.quantity_used || 0, t.unit || "kg")
       return sum + inKg
-    } catch {
-      return sum
+    } catch (conversionError) {
+      // ❌ LỖI CŨ: return sum (bỏ qua lỗi)
+      // ✅ FIX: Log error và throw để không tính sai tồn kho
+      console.error(`[v0] CRITICAL: Unit conversion failed for transformation input TLC ${tlcId}:`, {
+        quantity_used: t.quantity_used,
+        unit: t.unit,
+        error: conversionError,
+      })
+      throw new Error(
+        `Lỗi nghiêm trọng: Không thể convert đơn vị "${t.unit}" cho transformation input. ` +
+          `TLC ${tlcId} có dữ liệu không hợp lệ. Vui lòng kiểm tra lại transformation inputs.`,
+      )
     }
   }, 0)
 

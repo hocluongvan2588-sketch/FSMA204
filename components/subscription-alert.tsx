@@ -20,6 +20,8 @@ export function SubscriptionAlert({ companyId }: SubscriptionAlertProps) {
         const response = await fetch(`/api/subscription-status?companyId=${companyId}`)
         const data = await response.json()
 
+        console.log("[v0] Subscription alert data:", data)
+
         if (data.daysRemaining !== undefined) {
           setDaysRemaining(data.daysRemaining)
         }

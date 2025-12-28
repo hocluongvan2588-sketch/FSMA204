@@ -111,8 +111,8 @@ export async function createUser(input: CreateUserInput) {
 
       const { data: freePackage, error: packageError } = await adminClient
         .from("service_packages")
-        .select("id, name, price_monthly")
-        .or("name.ilike.%free%,price_monthly.eq.0")
+        .select("id, name, price_monthly, package_code")
+        .eq("package_code", "FREE")
         .eq("is_active", true)
         .limit(1)
         .single()
@@ -159,8 +159,8 @@ export async function createUser(input: CreateUserInput) {
 
         const { data: freePackage } = await adminClient
           .from("service_packages")
-          .select("id")
-          .eq("price_monthly", 0)
+          .select("id, package_code")
+          .eq("package_code", "FREE")
           .eq("is_active", true)
           .limit(1)
           .single()
@@ -337,8 +337,8 @@ export async function createCompany(input: {
     console.log("[v0] Attempting to create FREE subscription for new company")
     const { data: freePackage, error: packageError } = await adminClient
       .from("service_packages")
-      .select("id, name, price_monthly")
-      .eq("price_monthly", 0)
+      .select("id, name, price_monthly, package_code")
+      .eq("package_code", "FREE")
       .eq("is_active", true)
       .limit(1)
       .single()

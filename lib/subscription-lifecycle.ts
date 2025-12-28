@@ -70,7 +70,7 @@ export async function transitionTrialsToActive(): Promise<number> {
     .from("company_subscriptions")
     .select("id, company_id, stripe_subscription_id")
     .eq("status", "trial")
-    .lt("trial_end_date", now.toISOString())
+    .lt("end_date", now.toISOString())
 
   if (fetchError || !endedTrials) {
     console.error("[v0] Error fetching ended trials:", fetchError)
@@ -143,6 +143,8 @@ export async function transitionTrialsToActive(): Promise<number> {
 export async function getSubscriptionStatus(companyId: string): Promise<SubscriptionStatus | null> {
   const supabase = await createClient()
 
+  console.log("[v0] Querying subscription for company:", companyId)
+
   const { data, error } = await supabase
     .from("company_subscriptions")
     .select(
@@ -150,7 +152,6 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
       id,
       company_id,
       status,
-      trial_end_date,
       end_date,
       service_packages!inner (name)
     `,
@@ -159,9 +160,18 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
     .eq("status", "active")
     .order("created_at", { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle() // Use maybeSingle() instead of single() to avoid error when no rows
 
-  if (error || !data) {
+  console.log("[v0] First query result:", { data, error })
+
+  if (error) {
+    console.error("[v0] Error fetching active subscription:", error)
+  }
+
+  if (!data) {
+    console.log("[v0] No active subscription found, trying fallback query")
+
+    // Fallback: try to get any subscription
     const { data: freeData, error: freeError } = await supabase
       .from("company_subscriptions")
       .select(
@@ -169,7 +179,6 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
         id,
         company_id,
         status,
-        trial_end_date,
         end_date,
         service_packages!inner (name)
       `,
@@ -177,30 +186,47 @@ export async function getSubscriptionStatus(companyId: string): Promise<Subscrip
       .eq("company_id", companyId)
       .order("created_at", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle() // Use maybeSingle() instead of single()
 
-    if (freeError || !freeData) {
+    console.log("[v0] Fallback query result:", { freeData, freeError })
+
+    if (freeError) {
+      console.error("[v0] Error in fallback query:", freeError)
+      return null
+    }
+
+    if (!freeData) {
+      console.log("[v0] No subscription found at all for company")
       return null
     }
 
     const freePkg = freeData.service_packages as any
+    console.log("[v0] Returning subscription from fallback:", {
+      packageName: freePkg?.name,
+      status: freeData.status,
+    })
+
     return {
       id: freeData.id,
       companyId: freeData.company_id,
       status: freeData.status as any,
-      trialEndDate: freeData.trial_end_date ? new Date(freeData.trial_end_date) : null,
+      trialEndDate: null,
       endDate: new Date(freeData.end_date),
       packageName: freePkg?.name || "Unknown",
     }
   }
 
   const pkg = data.service_packages as any
+  console.log("[v0] Returning active subscription:", {
+    packageName: pkg?.name,
+    status: data.status,
+  })
 
   return {
     id: data.id,
     companyId: data.company_id,
     status: data.status as any,
-    trialEndDate: data.trial_end_date ? new Date(data.trial_end_date) : null,
+    trialEndDate: null,
     endDate: new Date(data.end_date),
     packageName: pkg?.name || "Unknown",
   }
@@ -226,7 +252,7 @@ export async function getDaysRemaining(companyId: string): Promise<number> {
     return 0
   }
 
-  if (status.packageName === "Free") {
+  if (status.packageName === "Free" || status.packageName?.toLowerCase() === "free") {
     return -1 // -1 means forever free, never expires
   }
 

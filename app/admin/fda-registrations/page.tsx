@@ -140,7 +140,7 @@ export default function AdminFDARegistrationsPage() {
       toast({
         variant: "destructive",
         title: "Authentication Error",
-        description: "Unable to verify user permissions. Please refresh the page.",
+        description: "Please sign in to access this page.",
       })
       setIsLoading(false)
       return
@@ -154,12 +154,12 @@ export default function AdminFDARegistrationsPage() {
       .eq("id", user.id)
       .single()
 
-    if (profileError) {
+    if (profileError || !profile) {
       console.error("[v0] Error loading user profile:", profileError)
       toast({
         variant: "destructive",
-        title: "Permission Error",
-        description: "Unable to load user permissions. Please contact support.",
+        title: "Profile Not Found",
+        description: "Your user profile could not be loaded. Please contact support or sign up again.",
       })
       setIsLoading(false)
       return
@@ -192,23 +192,21 @@ export default function AdminFDARegistrationsPage() {
     const { data: companiesData, error: companiesError } = await companiesQuery
 
     if (companiesError) {
-      console.error("[v0] Error loading companies:", {
-        message: companiesError.message,
-        code: companiesError.code,
-        details: companiesError.details,
-        hint: companiesError.hint,
-      })
+      console.error("[v0] Error loading companies:", companiesError)
+      if (companiesError.code !== "PGRST116") {
+        toast({
+          variant: "destructive",
+          title: "Data Loading Error",
+          description: `Failed to load companies: ${companiesError.message}`,
+        })
+      }
     } else {
       console.log("[v0] Companies loaded:", companiesData?.length || 0)
       if (companiesData) setCompanies(companiesData)
     }
 
     console.log("[v0] Loading US agents...")
-    const agentsQuery = supabase
-      .from("us_agents")
-      .select("id, agent_name, email, phone")
-      .eq("is_active", true)
-      .order("agent_name")
+    const agentsQuery = supabase.from("us_agents").select("id, agent_name, email, phone").order("agent_name")
 
     if (currentRole !== "system_admin" && userCompanyId) {
       agentsQuery.eq("company_id", userCompanyId)
@@ -217,22 +215,20 @@ export default function AdminFDARegistrationsPage() {
     const { data: usAgentsData, error: agentsError } = await agentsQuery
 
     if (agentsError) {
-      console.error("[v0] Error loading US agents:", {
-        message: agentsError.message,
-        code: agentsError.code,
-        details: agentsError.details,
-        hint: agentsError.hint,
-        userRole: currentRole,
-        companyId: userCompanyId,
-      })
-      toast({
-        variant: "destructive",
-        title: "Data Loading Error",
-        description: `Failed to load US agents: ${agentsError.message || "Permission denied"}`,
-      })
+      if (agentsError.message && agentsError.code && agentsError.code !== "PGRST116") {
+        console.error("[v0] Error loading US agents:", agentsError.message, "Code:", agentsError.code)
+        toast({
+          variant: "destructive",
+          title: "Lỗi tải dữ liệu",
+          description: `Không thể tải US Agents: ${agentsError.message}`,
+        })
+      } else {
+        console.log("[v0] No US agents found or no access")
+      }
     } else {
-      console.log("[v0] US Agents loaded:", usAgentsData?.length || 0)
-      if (usAgentsData) setUsAgents(usAgentsData)
+      const agentCount = usAgentsData?.length || 0
+      console.log(`[v0] Loaded ${agentCount} US agent(s)`)
+      setUsAgents(usAgentsData || [])
     }
 
     console.log("[v0] Loading FDA registrations...")
@@ -241,11 +237,7 @@ export default function AdminFDARegistrationsPage() {
       .select(
         `
         *,
-        companies (name),
-        agent_assignments (
-          us_agent_id,
-          us_agents (agent_name, email, phone)
-        )
+        companies (name)
       `,
       )
       .order("renewal_date", { ascending: true })
@@ -258,6 +250,7 @@ export default function AdminFDARegistrationsPage() {
         registrationsQuery.in("facility_id", facilityIds)
       } else {
         console.log("[v0] No facilities found for company, skipping registrations")
+        setRegistrations([])
         setIsLoading(false)
         return
       }
@@ -266,22 +259,20 @@ export default function AdminFDARegistrationsPage() {
     const { data: registrationsData, error } = await registrationsQuery
 
     if (error) {
-      console.error("[v0] Error loading FDA registrations:", {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-        userRole: currentRole,
-        companyId: userCompanyId,
-      })
-      toast({
-        variant: "destructive",
-        title: "Data Loading Error",
-        description: `Failed to load FDA registrations: ${error.message || "Permission denied"}`,
-      })
+      if (error.message && error.code && error.code !== "PGRST116") {
+        console.error("[v0] Error loading FDA registrations:", error.message, "Code:", error.code)
+        toast({
+          variant: "destructive",
+          title: "Lỗi tải dữ liệu",
+          description: `Không thể tải FDA Registrations: ${error.message}`,
+        })
+      } else {
+        console.log("[v0] No FDA registrations found or no access")
+      }
     } else {
-      console.log("[v0] FDA Registrations loaded:", registrationsData?.length || 0)
-      if (registrationsData) setRegistrations(registrationsData)
+      const regCount = registrationsData?.length || 0
+      console.log(`[v0] Loaded ${regCount} FDA registration(s)`)
+      setRegistrations(registrationsData || [])
     }
 
     setIsLoading(false)

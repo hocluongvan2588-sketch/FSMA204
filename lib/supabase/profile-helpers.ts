@@ -11,7 +11,7 @@ export async function ensureProfileExists(user: User) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("*, organization_type, allowed_cte_types")
+    .select("*")
     .eq("id", user.id)
     .maybeSingle()
 

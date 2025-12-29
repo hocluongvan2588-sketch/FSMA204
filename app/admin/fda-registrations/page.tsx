@@ -215,8 +215,35 @@ export default function AdminFDARegistrationsPage() {
     const { data: usAgentsData, error: agentsError } = await agentsQuery
 
     if (agentsError) {
-      if (agentsError.message && agentsError.code && agentsError.code !== "PGRST116") {
-        console.error("[v0] Error loading US agents:", agentsError.message, "Code:", agentsError.code)
+      console.error("[v0] US agents query error:", {
+        message: agentsError.message,
+        code: agentsError.code,
+        details: agentsError.details,
+        hint: agentsError.hint,
+      })
+
+      if (agentsError.message?.includes("email")) {
+        console.log("[v0] Retrying US agents query without email column...")
+        const retryQuery = supabase.from("us_agents").select("id, agent_name, phone").order("agent_name")
+
+        if (currentRole !== "system_admin" && userCompanyId) {
+          retryQuery.eq("company_id", userCompanyId)
+        }
+
+        const { data: retryData, error: retryError } = await retryQuery
+
+        if (!retryError && retryData) {
+          console.log(`[v0] Retry successful: Loaded ${retryData.length} US agent(s)`)
+          setUsAgents(retryData)
+        } else if (retryError && retryError.code !== "PGRST116") {
+          console.error("[v0] Retry also failed:", retryError.message)
+          toast({
+            variant: "destructive",
+            title: "Lỗi tải dữ liệu",
+            description: `Không thể tải US Agents: ${retryError.message}`,
+          })
+        }
+      } else if (agentsError.code !== "PGRST116") {
         toast({
           variant: "destructive",
           title: "Lỗi tải dữ liệu",
@@ -228,6 +255,7 @@ export default function AdminFDARegistrationsPage() {
     } else {
       const agentCount = usAgentsData?.length || 0
       console.log(`[v0] Loaded ${agentCount} US agent(s)`)
+
       setUsAgents(usAgentsData || [])
     }
 

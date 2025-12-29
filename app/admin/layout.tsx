@@ -21,10 +21,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const { profile, error: profileError } = await ensureProfileExists(user)
 
   if (!profile) {
-    if (profileError?.code === "42P17") {
-      console.error("[v0] RLS recursion detected in admin layout")
-      redirect("/auth/login?error=rls_recursion")
-    }
     redirect("/auth/login?error=profile_missing")
   }
 

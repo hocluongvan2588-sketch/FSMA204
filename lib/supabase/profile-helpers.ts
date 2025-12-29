@@ -4,7 +4,6 @@ import type { User } from "@supabase/supabase-js"
 /**
  * Ensures a profile exists for the given user
  * Creates one if it doesn't exist
- * Uses service role to bypass RLS for profile creation
  */
 export async function ensureProfileExists(user: User) {
   const supabase = await createClient()
@@ -17,35 +16,7 @@ export async function ensureProfileExists(user: User) {
 
   // If profile exists, return it
   if (profile && !profileError) {
-    console.log("[v0] Profile found for user:", user.email)
     return { profile, error: null, created: false, invalidSession: false }
-  }
-
-  if (profileError && profileError.code === "42P17") {
-    console.error("[v0] ========================================")
-    console.error("[v0] RLS INFINITE RECURSION DETECTED")
-    console.error("[v0] ========================================")
-    console.error("[v0] Error:", {
-      message: profileError.message,
-      code: profileError.code,
-      hint: profileError.hint,
-    })
-    console.error("[v0] ")
-    console.error("[v0] SOLUTION: Run the following script in Supabase SQL Editor:")
-    console.error("[v0] scripts/016_ultimate_rls_fix.sql")
-    console.error("[v0] ")
-    console.error("[v0] This will:")
-    console.error("[v0] 1. Remove all recursive RLS policies")
-    console.error("[v0] 2. Create simple, non-recursive policies")
-    console.error("[v0] 3. Allow profile creation to work properly")
-    console.error("[v0] ========================================")
-
-    return {
-      profile: null,
-      error: profileError,
-      created: false,
-      invalidSession: false,
-    }
   }
 
   const isNotFoundError =
@@ -65,19 +36,17 @@ export async function ensureProfileExists(user: User) {
     return { profile: null, error: profileError, created: false, invalidSession: false }
   }
 
-  // We'll use a permissive approach and let the trigger handle it
+  // Profile not found, attempt to create
   console.log("[v0] Profile not found, attempting to create for user:", user.email)
 
   const newProfile = {
     id: user.id,
-    email: user.email, // Required field - fixes NOT NULL constraint
+    email: user.email,
     full_name: user.user_metadata?.full_name || user.email || "User",
     role: user.user_metadata?.role || "viewer",
     language_preference: user.user_metadata?.language_preference || "vi",
     organization_type: user.user_metadata?.organization_type || null,
   }
-
-  console.log("[v0] Attempting to insert profile:", newProfile)
 
   const { data: createdProfile, error: createError } = await supabase
     .from("profiles")
@@ -92,14 +61,6 @@ export async function ensureProfileExists(user: User) {
       details: createError.details,
       hint: createError.hint,
     })
-
-    if (createError.code === "42P17") {
-      console.error("[v0] ========================================")
-      console.error("[v0] CRITICAL: RLS infinite recursion prevents profile creation")
-      console.error("[v0] ========================================")
-      console.error("[v0] Run script: scripts/016_ultimate_rls_fix.sql")
-      console.error("[v0] ========================================")
-    }
 
     return { profile: null, error: createError, created: false, invalidSession: false }
   }

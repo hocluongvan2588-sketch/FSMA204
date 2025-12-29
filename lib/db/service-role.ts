@@ -61,7 +61,7 @@ export function createServiceRoleClient() {
         },
         deleteUser: async (id: string) => {
           try {
-            await prisma.profiles.delete({ where: { profile_id: id } })
+            await prisma.profiles.delete({ where: { id: id } })
             return { error: null }
           } catch (error: any) {
             return { error: error.message }

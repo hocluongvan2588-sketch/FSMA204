@@ -49,7 +49,7 @@ export async function logAdminAction(data: AdminAuditLog): Promise<void> {
 
     // Get user profile for additional context
     const profile = await prisma.profiles.findUnique({
-      where: { profile_id: session.id },
+      where: { id: session.id },
       select: { role: true, company_id: true, full_name: true },
     })
 

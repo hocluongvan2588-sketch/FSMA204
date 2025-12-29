@@ -26,7 +26,7 @@ export async function createUser(input: CreateUserInput) {
     const session = await requireAuth()
 
     const currentProfile = await prisma.profiles.findUnique({
-      where: { profile_id: session.id },
+      where: { id: session.id },
       select: { role: true, company_id: true },
     })
 
@@ -130,7 +130,7 @@ export async function createUser(input: CreateUserInput) {
       },
     })
 
-    console.log("[v0] User created:", newUser.profile_id)
+    console.log("[v0] User created:", newUser.id)
 
     // Increment user count
     if (input.companyId) {
@@ -139,7 +139,7 @@ export async function createUser(input: CreateUserInput) {
 
     await logAdminAction({
       action: "user_create",
-      targetUserId: newUser.profile_id,
+      targetUserId: newUser.id,
       targetCompanyId: input.companyId || undefined,
       description: `Created new user: ${input.fullName} (${input.email}) with role: ${input.role}`,
       metadata: {
@@ -153,7 +153,7 @@ export async function createUser(input: CreateUserInput) {
 
     revalidatePath("/admin/users")
     revalidatePath("/admin/companies")
-    return { success: true, userId: newUser.profile_id }
+    return { success: true, userId: newUser.id }
   } catch (error: any) {
     console.error("[v0] Create user error:", error)
     return { error: error.message || "Có lỗi xảy ra" }
@@ -175,7 +175,7 @@ export async function createCompany(input: {
     const session = await requireAuth()
 
     const currentProfile = await prisma.profiles.findUnique({
-      where: { profile_id: session.id },
+      where: { id: session.id },
       select: { role: true },
     })
 
@@ -246,7 +246,7 @@ export async function deleteUser(userId: string) {
     const session = await requireAuth()
 
     const currentProfile = await prisma.profiles.findUnique({
-      where: { profile_id: session.id },
+      where: { id: session.id },
       select: { role: true, company_id: true },
     })
 
@@ -259,7 +259,7 @@ export async function deleteUser(userId: string) {
     }
 
     const userProfile = await prisma.profiles.findUnique({
-      where: { profile_id: userId },
+      where: { id: userId },
       select: { company_id: true, role: true },
     })
 
@@ -282,7 +282,7 @@ export async function deleteUser(userId: string) {
 
     // Delete user
     await prisma.profiles.delete({
-      where: { profile_id: userId },
+      where: { id: userId },
     })
 
     // Decrement user count

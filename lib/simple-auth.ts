@@ -81,7 +81,7 @@ export async function loginUser(email: string, password: string) {
   }
 
   const sessionUser: SessionUser = {
-    id: user.profile_id,
+    id: user.id,
     email: user.email,
     full_name: user.full_name,
     role: user.role,
@@ -100,7 +100,6 @@ export async function registerUser(data: {
   company_id: string
   role?: string
 }) {
-  // Check if user exists
   const existing = await prisma.profiles.findUnique({
     where: { email: data.email },
   })
@@ -109,10 +108,8 @@ export async function registerUser(data: {
     throw new Error("Email already registered")
   }
 
-  // Hash password
   const hashedPassword = await hashPassword(data.password)
 
-  // Create user
   const user = await prisma.profiles.create({
     data: {
       email: data.email,
@@ -124,7 +121,7 @@ export async function registerUser(data: {
   })
 
   const sessionUser: SessionUser = {
-    id: user.profile_id,
+    id: user.id,
     email: user.email,
     full_name: user.full_name,
     role: user.role,

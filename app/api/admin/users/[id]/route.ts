@@ -17,9 +17,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const isAdmin = session.role === "admin"
 
     const profile = await prisma.profiles.findUnique({
-      where: { profile_id: userId },
+      where: { id: userId },
       select: {
-        profile_id: true,
+        id: true,
         company_id: true,
         full_name: true,
         role: true,
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         organization_type: true,
         allowed_cte_types: true,
         email: true,
-        last_login: true,
+        last_login_at: true,
       },
     })
 
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       profile: profile,
       auth: {
         email: profile.email,
-        last_sign_in_at: profile.last_login,
+        last_sign_in_at: profile.last_login_at,
       },
     })
   } catch (error: any) {
@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const isSystemAdmin = session.role === "system_admin"
 
     const targetUser = await prisma.profiles.findUnique({
-      where: { profile_id: userId },
+      where: { id: userId },
       select: {
         company_id: true,
         role: true,
@@ -126,7 +126,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     await prisma.profiles.update({
-      where: { profile_id: userId },
+      where: { id: userId },
       data: updates,
     })
 

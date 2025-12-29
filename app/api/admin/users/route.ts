@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const profilesData = await prisma.profiles.findMany({
       where: !isSystemAdmin && session.company_id ? { company_id: session.company_id } : {},
       select: {
-        profile_id: true,
+        id: true,
         email: true,
         full_name: true,
         role: true,
@@ -25,9 +25,9 @@ export async function POST(request: NextRequest) {
     })
 
     const companies = await prisma.companies.findMany({
-      where: !isSystemAdmin && session.company_id ? { company_id: session.company_id } : {},
+      where: !isSystemAdmin && session.company_id ? { id: session.company_id } : {},
       select: {
-        company_id: true,
+        id: true,
         name: true,
         registration_number: true,
       },

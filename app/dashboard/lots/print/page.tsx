@@ -13,7 +13,7 @@ import { Printer, Download, QrCode, Barcode, Search, Lock } from "lucide-react"
 import QRCode from "qrcode"
 import JsBarcode from "jsbarcode"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { WatermarkOverlay, getWatermarkConfig } from "@/lib/watermark-client"
+import { WatermarkOverlay, getWatermarkConfig } from "@/lib/watermark"
 
 interface Lot {
   id: string

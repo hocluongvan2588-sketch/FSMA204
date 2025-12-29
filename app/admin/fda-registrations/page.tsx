@@ -75,8 +75,8 @@ interface Company {
 interface USAgent {
   id: string
   agent_name: string
-  email: string
-  phone: string
+  agent_email: string
+  agent_phone: string
 }
 
 export default function AdminFDARegistrationsPage() {
@@ -206,7 +206,10 @@ export default function AdminFDARegistrationsPage() {
     }
 
     console.log("[v0] Loading US agents...")
-    const agentsQuery = supabase.from("us_agents").select("id, agent_name, email, phone").order("agent_name")
+    const agentsQuery = supabase
+      .from("us_agents")
+      .select("id, agent_name, agent_email, agent_phone")
+      .order("agent_name")
 
     if (currentRole !== "system_admin" && userCompanyId) {
       agentsQuery.eq("company_id", userCompanyId)
@@ -222,9 +225,9 @@ export default function AdminFDARegistrationsPage() {
         hint: agentsError.hint,
       })
 
-      if (agentsError.message?.includes("email")) {
-        console.log("[v0] Retrying US agents query without email column...")
-        const retryQuery = supabase.from("us_agents").select("id, agent_name, phone").order("agent_name")
+      if (agentsError.message?.includes("agent_email")) {
+        console.log("[v0] Retrying US agents query without agent_email column...")
+        const retryQuery = supabase.from("us_agents").select("id, agent_name, agent_phone").order("agent_name")
 
         if (currentRole !== "system_admin" && userCompanyId) {
           retryQuery.eq("company_id", userCompanyId)
@@ -268,7 +271,7 @@ export default function AdminFDARegistrationsPage() {
         companies (name)
       `,
       )
-      .order("renewal_date", { ascending: true })
+      .order("expiry_date", { ascending: true })
 
     if (currentRole !== "system_admin" && userCompanyId) {
       const { data: userFacilities } = await supabase.from("facilities").select("id").eq("company_id", userCompanyId)
@@ -988,7 +991,7 @@ export default function AdminFDARegistrationsPage() {
                     <SelectItem value="none">Không chọn (gán sau)</SelectItem>
                     {usAgents.map((agent) => (
                       <SelectItem key={agent.id} value={agent.id}>
-                        {agent.agent_name} ({agent.email})
+                        {agent.agent_name} ({agent.agent_email})
                       </SelectItem>
                     ))}
                   </SelectContent>

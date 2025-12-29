@@ -1,8 +1,7 @@
 import { createServerClient as createSupabaseServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
-import { cache } from "react"
 
-export const createClient = cache(async () => {
+export async function createClient() {
   const cookieStore = await cookies()
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -27,6 +26,6 @@ export const createClient = cache(async () => {
       },
     },
   })
-})
+}
 
 export const createServerClient = createClient

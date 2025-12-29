@@ -10,11 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
-import {
-  calculateExpiryDate,
-  getExpirationStatus,
-  getExpirationAlertColor,
-} from "@/lib/utils/expiration-calculator-client"
+import { calculateExpiryDate, getExpirationStatus, getExpirationAlertColor } from "@/lib/utils/expiration-calculator"
 
 export default function CreateLotPage() {
   const [isLoading, setIsLoading] = useState(false)

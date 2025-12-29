@@ -1,93 +1,80 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createServiceRoleClient } from "@/lib/supabase/service-role"
+import { prisma } from "@/lib/prisma"
+import { createClient } from '@supabase/supabase-js'
+
+// Khởi tạo Supabase Admin (Server-side duy nhất)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // 1. Lấy token từ Header (thay vì dùng NextAuth getServerSession đang lỗi)
+    const authHeader = request.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized - No token provided" }, { status: 401 })
+    }
 
-    if (!user) {
+    // 2. Xác thực user qua Supabase
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, company_id, organization_type")
-      .eq("id", user.id)
-      .single()
+    // 3. Truy vấn Profile qua Prisma
+    const profile = await prisma.profiles.findUnique({
+      where: { id: user.id },
+      select: {
+        role: true,
+        company_id: true,
+        organization_type: true,
+      },
+    })
 
     if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
     }
 
+    // Kiểm tra quyền Admin
     if (profile.role !== "admin" && profile.role !== "system_admin") {
       return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 })
     }
 
     const isSystemAdmin = profile.role === "system_admin"
 
-    const serviceClient = createServiceRoleClient()
-
-    const { data: authUsers, error: authError } = await serviceClient.auth.admin.listUsers()
-
-    if (authError) {
-      console.error("[v0] Failed to list auth users:", authError)
-      return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
-    }
-
-    // Get all profiles
-    let profilesQuery = serviceClient
-      .from("profiles")
-      .select("id, full_name, role, phone, created_at, organization_type, allowed_cte_types, company_id")
-
-    if (!isSystemAdmin && profile.company_id) {
-      profilesQuery = profilesQuery.eq("company_id", profile.company_id)
-    }
-
-    const { data: profilesData } = await profilesQuery
-
-    // Create a map of profiles by user id
-    const profilesMap = new Map(profilesData?.map((p) => [p.id, p]) || [])
-
-    // Merge auth users with profiles
-    const mergedUsers = (authUsers.users || []).map((authUser) => {
-      const userProfile = profilesMap.get(authUser.id)
-
-      return {
-        id: authUser.id,
-        email: authUser.email || "",
-        full_name: userProfile?.full_name || authUser.email || "",
-        role: userProfile?.role || "viewer",
-        phone: userProfile?.phone || null,
-        created_at: userProfile?.created_at || authUser.created_at,
-        organization_type: userProfile?.organization_type || null,
-        allowed_cte_types: userProfile?.allowed_cte_types || null,
-        company_id: userProfile?.company_id || null,
-      }
+    // 4. Lấy dữ liệu Profiles
+    const profilesData = await prisma.profiles.findMany({
+      where: !isSystemAdmin && profile.company_id ? { company_id: profile.company_id } : {},
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        phone: true,
+        created_at: true,
+        organization_type: true,
+        allowed_cte_types: true,
+        company_id: true,
+      },
+      orderBy: { created_at: "desc" },
     })
 
-    // Filter by company if not system admin
-    let filteredUsers = mergedUsers
-    if (!isSystemAdmin && profile.company_id) {
-      filteredUsers = mergedUsers.filter((u) => u.company_id === profile.company_id)
-    }
+    // 5. Lấy dữ liệu Companies
+    const companies = await prisma.companies.findMany({
+      where: !isSystemAdmin && profile.company_id ? { id: profile.company_id } : {},
+      select: {
+        id: true,
+        name: true,
+        display_name: true,
+      },
+      orderBy: { name: "asc" },
+    })
 
-    // Sort by created_at descending
-    filteredUsers.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-    let companiesQuery = serviceClient.from("companies").select("id, name, display_name").order("name")
-
-    if (!isSystemAdmin && profile.company_id) {
-      companiesQuery = companiesQuery.eq("id", profile.company_id)
-    }
-
-    const { data: companies } = await companiesQuery
-
-    return NextResponse.json({ profiles: filteredUsers, companies: companies || [] })
+    return NextResponse.json({ profiles: profilesData, companies: companies || [] })
   } catch (error: any) {
     console.error("[v0] Admin users API error:", error)
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 })

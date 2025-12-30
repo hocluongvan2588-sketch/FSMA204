@@ -45,16 +45,16 @@ model Company {
 
 model Profile {
   id              String   @id @default(cuid())
-  companyId       String
+  companyId       String   @map("company_id")
   email           String   @unique
-  fullName        String?
+  fullName        String?  @map("full_name")
   role            String   @default("user")
   phone           String?
   position        String?
-  isActive        Boolean  @default(true)
-  hashedPassword  String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  isActive        Boolean  @default(true) @map("is_active")
+  hashedPassword  String?  @map("hashed_password")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   // Relations
   company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -97,28 +97,28 @@ model SessionToken {
 
 model Facility {
   id                    String    @id @default(cuid())
-  companyId             String
+  companyId             String    @map("company_id")
   name                  String
-  facilityType          String
-  locationCode          String    @unique
+  facilityType          String    @map("facility_type")
+  locationCode          String    @unique @map("location_code")
   address               String
-  gpsCoordinates        String?
-  certificationStatus   String?
-  agentRegistrationDate DateTime?
-  agentRegistrationYears Int      @default(1)
-  agentExpiryDate       DateTime?
-  dunsNumber            String?
-  fdaFacilityNumber     String?
-  fdaRegistrationDate   DateTime?
-  fdaExpiryDate         DateTime?
-  fdaStatus             String    @default("pending")
-  fdaRegistrationStatus String    @default("pending")
-  registrationEmail     String?
-  deletedAt             DateTime?
-  deletedBy             String?
-  deletionReason        String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  gpsCoordinates        String?   @map("gps_coordinates")
+  certificationStatus   String?   @map("certification_status")
+  agentRegistrationDate DateTime? @map("agent_registration_date")
+  agentRegistrationYears Int       @default(1) @map("agent_registration_years")
+  agentExpiryDate       DateTime? @map("agent_expiry_date")
+  dunsNumber            String?   @map("duns_number")
+  fdaFacilityNumber     String?   @map("fda_facility_number")
+  fdaRegistrationDate   DateTime? @map("fda_registration_date")
+  fdaExpiryDate         DateTime? @map("fda_expiry_date")
+  fdaStatus             String    @default("pending") @map("fda_status")
+  fdaRegistrationStatus String    @default("pending") @map("fda_registration_status")
+  registrationEmail     String?   @map("registration_email")
+  deletedAt             DateTime? @map("deleted_at")
+  deletedBy             String?   @map("deleted_by")
+  deletionReason        String?   @map("deletion_reason")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   // Relations
   company               Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -139,20 +139,20 @@ model Facility {
 
 model Product {
   id            String    @id @default(cuid())
-  companyId     String
-  productCode   String    @unique
+  companyId     String    @map("company_id")
+  productCode   String    @unique @map("product_code")
   productName   String
-  productNameVi String?
-  description   String?
+  productNameVi String?   @map("product_name_vi")
+  description   String?   @map("description")
   category      String
-  isFtl         Boolean   @default(false)
-  unitOfMeasure String
-  requiresCte   Boolean   @default(true)
-  deletedAt     DateTime?
-  deletedBy     String?
-  deletionReason String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  isFtl         Boolean   @default(false) @map("is_ftl")
+  unitOfMeasure String    @map("unit_of_measure")
+  requiresCte   Boolean   @default(true) @map("requires_cte")
+  deletedAt     DateTime? @map("deleted_at")
+  deletedBy     String?   @map("deleted_by")
+  deletionReason String?   @map("deletion_reason")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relations
   company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -170,29 +170,29 @@ model Product {
 model TraceabilityLot {
   id                   String    @id @default(cuid())
   tlc                  String    @unique
-  productId            String
-  facilityId           String
+  productId            String    @map("product_id")
+  facilityId           String    @map("facility_id")
   batchNumber          String
-  productionDate       DateTime
-  expiryDate           DateTime?
-  quantity             Decimal   @db.Decimal(15, 2)
+  productionDate       DateTime  @map("production_date")
+  expiryDate           DateTime? @map("expiry_date")
+  quantity             Decimal   @db.Decimal(15, 2) @map("quantity")
   unit                 String
-  status               String    @default("active")
-  availableQuantity    Decimal   @db.Decimal(15, 2)
-  reservedQuantity     Decimal   @default(0) @db.Decimal(15, 2)
-  shippedQuantity      Decimal   @default(0) @db.Decimal(15, 2)
-  parentTlcCount       Int       @default(0)
-  childTlcCount        Int       @default(0)
-  isTransformedProduct Boolean   @default(false)
-  isArchived           Boolean   @default(false)
-  archivedAt           DateTime?
-  archivedBy           String?
-  archiveReason        String?
-  deletedAt            DateTime?
-  deletedBy            String?
-  deletionReason       String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  status               String    @default("active") @map("status")
+  availableQuantity    Decimal   @db.Decimal(15, 2) @map("available_quantity")
+  reservedQuantity     Decimal   @default(0) @db.Decimal(15, 2) @map("reserved_quantity")
+  shippedQuantity      Decimal   @default(0) @db.Decimal(15, 2) @map("shipped_quantity")
+  parentTlcCount       Int       @default(0) @map("parent_tlc_count")
+  childTlcCount        Int       @default(0) @map("child_tlc_count")
+  isTransformedProduct Boolean   @default(false) @map("is_transformed_product")
+  isArchived           Boolean   @default(false) @map("is_archived")
+  archivedAt           DateTime? @map("archived_at")
+  archivedBy           String?   @map("archived_by")
+  archiveReason        String?   @map("archive_reason")
+  deletedAt            DateTime? @map("deleted_at")
+  deletedBy            String?   @map("deleted_by")
+  deletionReason       String?   @map("deletion_reason")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   // Relations
   product               Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -213,27 +213,27 @@ model TraceabilityLot {
 
 model CriticalTrackingEvent {
   id               String    @id @default(cuid())
-  tlcId            String
-  facilityId       String
-  eventType        String
-  eventDate        DateTime
-  quantityProcessed Decimal   @db.Decimal(15, 2)
+  tlcId            String    @map("tlc_id")
+  facilityId       String    @map("facility_id")
+  eventType        String    @map("event_type")
+  eventDate        DateTime  @map("event_date")
+  quantityProcessed Decimal   @db.Decimal(15, 2) @map("quantity_processed")
   unit             String
-  location         String?
-  operatorName     String?
-  temperature      Decimal?  @db.Decimal(5, 2)
-  notes            String?
-  status           String    @default("draft")
-  submittedAt      DateTime?
-  submittedBy      String?
-  wasteActual      Decimal?  @db.Decimal(15, 2)
-  wasteExpected    Decimal?  @db.Decimal(15, 2)
-  wasteReason      String?
-  deletedAt        DateTime?
-  deletedBy        String?
-  deletionReason   String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  location         String?   @map("location")
+  operatorName     String?   @map("operator_name")
+  temperature      Decimal?  @db.Decimal(5, 2) @map("temperature")
+  notes            String?   @map("notes")
+  status           String    @default("draft") @map("status")
+  submittedAt      DateTime? @map("submitted_at")
+  submittedBy      String?   @map("submitted_by")
+  wasteActual      Decimal?  @db.Decimal(15, 2) @map("waste_actual")
+  wasteExpected    Decimal?  @db.Decimal(15, 2) @map("waste_expected")
+  wasteReason      String?   @map("waste_reason")
+  deletedAt        DateTime? @map("deleted_at")
+  deletedBy        String?   @map("deleted_by")
+  deletionReason   String?   @map("deletion_reason")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   // Relations
   traceabilityLot TraceabilityLot @relation(fields: [tlcId], references: [id], onDelete: Cascade)
@@ -250,13 +250,13 @@ model CriticalTrackingEvent {
 
 model KeyDataElement {
   id        String   @id @default(cuid())
-  cteId     String
-  kdeCode   String
-  kdeName   String
-  kdeValue  String   @db.Text
-  isRequired Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  cteId     String    @map("cte_id")
+  kdeCode   String    @map("kde_code")
+  kdeName   String    @map("kde_name")
+  kdeValue  String   @db.Text @map("kde_value")
+  isRequired Boolean  @default(true) @map("is_required")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
   criticalTrackingEvent CriticalTrackingEvent @relation(fields: [cteId], references: [id], onDelete: Cascade)
@@ -267,16 +267,16 @@ model KeyDataElement {
 
 model KDERequirement {
   id              String   @id @default(cuid())
-  eventType       String
-  kdeCode         String
-  kdeName         String
-  kdeDescription  String?
-  isRequired      Boolean  @default(true)
-  dataType        String   @default("text")
-  validationRules Json?    @db.Json
-  displayOrder    Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  eventType       String    @map("event_type")
+  kdeCode         String    @map("kde_code")
+  kdeName         String    @map("kde_name")
+  kdeDescription  String?   @map("kde_description")
+  isRequired      Boolean  @default(true) @map("is_required")
+  dataType        String   @default("text") @map("data_type")
+  validationRules Json?    @db.Json @map("validation_rules")
+  displayOrder    Int      @default(0) @map("display_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@unique([eventType, kdeCode])
   @@map("kde_requirements")
@@ -288,20 +288,20 @@ model KDERequirement {
 
 model Shipment {
   id             String    @id @default(cuid())
-  shipmentNumber String    @unique
-  fromFacilityId String?
-  toFacilityId   String?
-  departureDate  DateTime?
-  arrivalDate    DateTime?
-  carrierName    String?
-  trackingNumber String?
-  status         String    @default("preparing")
-  notes          String?
-  deletedAt      DateTime?
-  deletedBy      String?
-  deletionReason String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  shipmentNumber String    @unique @map("shipment_number")
+  fromFacilityId String?   @map("from_facility_id")
+  toFacilityId   String?   @map("to_facility_id")
+  departureDate  DateTime? @map("departure_date")
+  arrivalDate    DateTime? @map("arrival_date")
+  carrierName    String?   @map("carrier_name")
+  trackingNumber String?   @map("tracking_number")
+  status         String    @default("preparing") @map("status")
+  notes          String?   @map("notes")
+  deletedAt      DateTime? @map("deleted_at")
+  deletedBy      String?   @map("deleted_by")
+  deletionReason String?   @map("deletion_reason")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
   fromFacility  Facility?      @relation("from_facility", fields: [fromFacilityId], references: [id], onDelete: SetNull)
@@ -315,12 +315,12 @@ model Shipment {
 
 model ShipmentItem {
   id         String   @id @default(cuid())
-  shipmentId String
-  tlcId      String
-  quantity   Decimal  @db.Decimal(15, 2)
+  shipmentId String    @map("shipment_id")
+  tlcId      String    @map("tlc_id")
+  quantity   Decimal  @db.Decimal(15, 2) @map("quantity")
   unit       String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   // Relations
   shipment        Shipment        @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
@@ -333,14 +333,14 @@ model ShipmentItem {
 
 model TransformationEvent {
   id                 String   @id @default(cuid())
-  outputTlcId        String
-  transformationType String
-  transformationDate DateTime
-  facilityId         String
-  operatorName       String?
-  notes              String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  outputTlcId        String    @map("output_tlc_id")
+  transformationType String    @map("transformation_type")
+  transformationDate DateTime  @map("transformation_date")
+  facilityId         String    @map("facility_id")
+  operatorName       String?   @map("operator_name")
+  notes              String?   @map("notes")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   // Relations
   outputTlc            TraceabilityLot       @relation("output_tlc", fields: [outputTlcId], references: [id], onDelete: Cascade)
@@ -354,12 +354,12 @@ model TransformationEvent {
 
 model TransformationInput {
   id               String   @id @default(cuid())
-  transformationId String
-  inputTlcId       String
-  quantityUsed     Decimal  @db.Decimal(15, 2)
+  transformationId String    @map("transformation_id")
+  inputTlcId       String    @map("input_tlc_id")
+  quantityUsed     Decimal  @db.Decimal(15, 2) @map("quantity_used")
   unit             String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   // Relations
   transformation  TransformationEvent @relation(fields: [transformationId], references: [id], onDelete: Cascade)
@@ -376,17 +376,17 @@ model TransformationInput {
 
 model AuditLog {
   id             String   @id @default(cuid())
-  tableName      String
-  recordId       String
+  tableName      String    @map("table_name")
+  recordId       String    @map("record_id")
   action         String
-  oldValues      Json?    @db.Json
-  newValues      Json?    @db.Json
-  changedColumns String?
-  actorId        String?
-  ipAddress      String?
-  userAgent      String?
-  isCritical     Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  oldValues      Json?    @db.Json @map("old_values")
+  newValues      Json?    @db.Json @map("new_values")
+  changedColumns String?   @map("changed_columns")
+  actorId        String?   @map("actor_id")
+  ipAddress      String?   @map("ip_address")
+  userAgent      String?   @map("user_agent")
+  isCritical     Boolean  @default(false) @map("is_critical")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   // Relations
   actor                 Profile?               @relation(fields: [actorId], references: [id], onDelete: SetNull)
@@ -399,14 +399,14 @@ model AuditLog {
 
 model ChronologicalOrderValidation {
   id                String    @id @default(cuid())
-  tlcId             String
-  eventType         String
-  eventDate         DateTime
-  previousEventType String?
-  previousEventDate DateTime?
+  tlcId             String    @map("tlc_id")
+  eventType         String    @map("event_type")
+  eventDate         DateTime  @map("event_date")
+  previousEventType String?   @map("previous_event_type")
+  previousEventDate DateTime? @map("previous_event_date")
   isValid           Boolean
-  validationMessage String?
-  createdAt         DateTime  @default(now())
+  validationMessage String?   @map("validation_message")
+  createdAt         DateTime  @default(now()) @map("created_at")
 
   // Relations
   traceabilityLot TraceabilityLot @relation(fields: [tlcId], references: [id], onDelete: Cascade)
@@ -417,15 +417,15 @@ model ChronologicalOrderValidation {
 
 model UsAgent {
   id                      String   @id @default(cuid())
-  companyId               String
+  companyId               String    @map("company_id")
   agentName               String
-  agentAddress            String
-  agentPhone              String
-  agentEmail              String
-  agentRegistrationNumber String?
-  isActive                Boolean  @default(true)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  agentAddress            String    @map("agent_address")
+  agentPhone              String    @map("agent_phone")
+  agentEmail              String    @map("agent_email")
+  agentRegistrationNumber String?   @map("agent_registration_number")
+  isActive                Boolean  @default(true) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
 
   // Relations
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -436,14 +436,14 @@ model UsAgent {
 
 model FDARegistration {
   id                 String   @id @default(cuid())
-  facilityId         String
-  registrationNumber String   @unique
-  registrationDate   DateTime
-  expiryDate         DateTime
-  status             String   @default("active")
-  renewalReminderSent Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  facilityId         String    @map("facility_id")
+  registrationNumber String   @unique @map("registration_number")
+  registrationDate   DateTime  @map("registration_date")
+  expiryDate         DateTime  @map("expiry_date")
+  status             String   @default("active") @map("status")
+  renewalReminderSent Boolean  @default(false) @map("renewal_reminder_sent")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   // Relations
   facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
@@ -454,15 +454,15 @@ model FDARegistration {
 
 model AuditReport {
   id              String   @id @default(cuid())
-  facilityId      String
-  auditDate       DateTime
-  auditorName     String
-  auditType       String
-  findings        String?  @db.Text
-  recommendations String?  @db.Text
-  status          String   @default("completed")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  facilityId      String    @map("facility_id")
+  auditDate       DateTime  @map("audit_date")
+  auditorName     String    @map("auditor_name")
+  auditType       String    @map("audit_type")
+  findings        String?   @db.Text @map("findings")
+  recommendations String?   @db.Text @map("recommendations")
+  status          String   @default("completed") @map("status")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   // Relations
   facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
@@ -473,15 +473,15 @@ model AuditReport {
 
 model ExporterFacility {
   id                 String   @id @default(cuid())
-  companyId          String
-  facilityId         String
-  facilityName       String
-  facilityAddress    String
-  facilityType       String
-  certificationNumber String?
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  companyId          String    @map("company_id")
+  facilityId         String    @map("facility_id")
+  facilityName       String    @map("facility_name")
+  facilityAddress    String    @map("facility_address")
+  facilityType       String    @map("facility_type")
+  certificationNumber String?   @map("certification_number")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   // Relations
   company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -498,15 +498,15 @@ model ExporterFacility {
 model ServicePackage {
   id           String   @id @default(cuid())
   name         String   @unique
-  description  String?
-  priceMonthly Decimal  @db.Decimal(10, 2)
-  priceYearly  Decimal  @db.Decimal(10, 2)
-  features     Json     @db.Json
-  limits       Json     @db.Json
-  isActive     Boolean  @default(true)
-  displayOrder Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  description  String?  @map("description")
+  priceMonthly Decimal  @db.Decimal(10, 2) @map("price_monthly")
+  priceYearly  Decimal  @db.Decimal(10, 2) @map("price_yearly")
+  features     Json     @db.Json @map("features")
+  limits       Json     @db.Json @map("limits")
+  isActive     Boolean  @default(true) @map("is_active")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   // Relations
   subscriptions CompanySubscription[]
@@ -516,17 +516,17 @@ model ServicePackage {
 
 model CompanySubscription {
   id                  String   @id @default(cuid())
-  companyId           String
-  packageId           String
-  billingCycle        String
-  pricePaid           Decimal  @db.Decimal(10, 2)
-  startDate           DateTime
-  endDate             DateTime
-  status              String   @default("active")
-  autoRenew           Boolean  @default(true)
-  stripeSubscriptionId String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  companyId           String    @map("company_id")
+  packageId           String    @map("package_id")
+  billingCycle        String    @map("billing_cycle")
+  pricePaid           Decimal  @db.Decimal(10, 2) @map("price_paid")
+  startDate           DateTime  @map("start_date")
+  endDate             DateTime  @map("end_date")
+  status              String   @default("active") @map("status")
+  autoRenew           Boolean  @default(true) @map("auto_renew")
+  stripeSubscriptionId String?  @map("stripe_subscription_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   // Relations
   company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -540,42 +540,41 @@ model CompanySubscription {
 
 model PaymentTransaction {
   id                  String   @id @default(cuid())
-  companyId           String
-  subscriptionId      String?
-  amount              Decimal  @db.Decimal(10, 2)
-  currency            String   @default("USD")
-  paymentMethod       String
-  transactionId       String?  @unique
-  stripePaymentIntentId String?
-  status              String   @default("pending")
-  paymentDate         DateTime?
-  notes               String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  companyId           String    @map("company_id")
+  subscriptionId      String?   @map("subscription_id")
+  amount              Decimal  @db.Decimal(10, 2) @map("amount")
+  currency            String   @default("USD") @map("currency")
+  paymentMethod       String    @map("payment_method")
+  transactionId       String?   @unique @map("transaction_id")
+  stripePaymentIntentId String?  @map("stripe_payment_intent_id")
+  status              String   @default("pending") @map("status")
+  paymentDate         DateTime? @map("payment_date")
+  notes               String?   @map("notes")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   // Relations
   company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   subscription CompanySubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
-  @@index([subscriptionId])
   @@map("payment_transactions")
 }
 
 model Invoice {
   id                  String   @id @default(cuid())
-  companyId           String
-  invoiceNumber       String   @unique
-  invoiceDate         DateTime
-  dueDate             DateTime
-  amount              Decimal  @db.Decimal(10, 2)
-  taxAmount           Decimal  @default(0) @db.Decimal(10, 2)
-  totalAmount         Decimal  @db.Decimal(10, 2)
-  status              String   @default("pending")
-  paymentTransactionId String?
-  notes               String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  companyId           String    @map("company_id")
+  invoiceNumber       String   @unique @map("invoice_number")
+  invoiceDate         DateTime  @map("invoice_date")
+  dueDate             DateTime  @map("due_date")
+  amount              Decimal  @db.Decimal(10, 2) @map("amount")
+  taxAmount           Decimal  @default(0) @db.Decimal(10, 2) @map("tax_amount")
+  totalAmount         Decimal  @db.Decimal(10, 2) @map("total_amount")
+  status              String   @default("pending") @map("status")
+  paymentTransactionId String?  @map("payment_transaction_id")
+  notes               String?   @map("notes")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   // Relations
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -586,14 +585,14 @@ model Invoice {
 
 model SubscriptionAuditLog {
   id             String   @id @default(cuid())
-  companyId      String
-  subscriptionId String?
+  companyId      String    @map("company_id")
+  subscriptionId String?   @map("subscription_id")
   action         String
-  oldValues      Json?    @db.Json
-  newValues      Json?    @db.Json
-  actorId        String?
-  notes          String?
-  createdAt      DateTime @default(now())
+  oldValues      Json?    @db.Json @map("old_values")
+  newValues      Json?    @db.Json @map("new_values")
+  actorId        String?   @map("actor_id")
+  notes          String?   @map("notes")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   // Relations
   company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -605,15 +604,15 @@ model SubscriptionAuditLog {
 
 model CompanySubscriptionOverride {
   id            String    @id @default(cuid())
-  companyId     String
-  overrideType  String
-  overrideValue Json      @db.Json
-  reason        String?
-  createdBy     String?
-  expiresAt     DateTime?
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  companyId     String    @map("company_id")
+  overrideType  String    @map("override_type")
+  overrideValue Json      @db.Json @map("override_value")
+  reason        String?   @map("reason")
+  createdBy     String?   @map("created_by")
+  expiresAt     DateTime? @map("expires_at")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relations
   company   Company                        @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -626,13 +625,13 @@ model CompanySubscriptionOverride {
 
 model SubscriptionOverrideAuditLog {
   id         String   @id @default(cuid())
-  companyId  String
-  overrideId String?
+  companyId  String    @map("company_id")
+  overrideId String?   @map("override_id")
   action     String
-  oldValues  Json?    @db.Json
-  newValues  Json?    @db.Json
-  actorId    String?
-  createdAt  DateTime @default(now())
+  oldValues  Json?    @db.Json @map("old_values")
+  newValues  Json?    @db.Json @map("new_values")
+  actorId    String?   @map("actor_id")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   // Relations
   company  Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -649,15 +648,15 @@ model SubscriptionOverrideAuditLog {
 
 model FileUpload {
   id           String   @id @default(cuid())
-  companyId    String
-  fileName     String
-  filePath     String
-  fileSize     BigInt
-  fileType     String
-  uploadedBy   String?
-  relatedTable String?
-  relatedId    String?
-  createdAt    DateTime @default(now())
+  companyId    String    @map("company_id")
+  fileName     String    @map("file_name")
+  filePath     String    @map("file_path")
+  fileSize     BigInt    @map("file_size")
+  fileType     String    @map("file_type")
+  uploadedBy   String?   @map("uploaded_by")
+  relatedTable String?   @map("related_table")
+  relatedId    String?   @map("related_id")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   // Relations
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -668,16 +667,17 @@ model FileUpload {
 
 model InventoryBalanceLog {
   id             String   @id @default(cuid())
-  companyId      String
-  tlcId          String
-  eventType      String
-  quantityChange Decimal  @db.Decimal(15, 2)
-  balanceBefore  Decimal  @db.Decimal(15, 2)
-  balanceAfter   Decimal  @db.Decimal(15, 2)
-  referenceId    String?
-  referenceType  String?
-  notes          String?
-  createdAt      DateTime @default(now())
+  companyId      String    @map("company_id")
+  tlcId          String    @map("tlc_id")
+  eventType      String    @map("event_type")
+  quantityChange Decimal  @db.Decimal(15, 2) @map("quantity_change")
+  balanceBefore  Decimal  @db.Decimal(15, 2) @map("balance_before")
+  balanceAfter   Decimal  @db.Decimal(15, 2) @map("balance_after")
+  referenceId    String?   @map("reference_id")
+  referenceType  String?   @map("reference_type")
+  notes          String?   @map("notes")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   // Relations
   company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -694,18 +694,18 @@ model InventoryBalanceLog {
 
 model FacilityUpdateRequest {
   id              String    @id @default(cuid())
-  facilityId      String
-  requestedById   String
-  requestType     String
-  currentValues   Json?     @db.Json
-  requestedValues Json      @db.Json
-  reason          String
-  status          String    @default("pending")
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  reviewNotes     String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  facilityId      String    @map("facility_id")
+  requestedById   String    @map("requested_by_id")
+  requestType     String    @map("request_type")
+  currentValues   Json?     @db.Json @map("current_values")
+  requestedValues Json      @db.Json @map("requested_values")
+  reason          String    @map("reason")
+  status          String    @default("pending") @map("status")
+  reviewedBy      String?   @map("reviewed_by")
+  reviewedAt      DateTime? @map("reviewed_at")
+  reviewNotes     String?   @map("review_notes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   // Relations
   facility        Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
@@ -718,15 +718,15 @@ model FacilityUpdateRequest {
 
 model Notification {
   id           String    @id @default(cuid())
-  userId       String
+  userId       String    @map("user_id")
   title        String
   message      String
   type         String
-  relatedTable String?
-  relatedId    String?
-  isRead       Boolean   @default(false)
-  readAt       DateTime?
-  createdAt    DateTime  @default(now())
+  relatedTable String?   @map("related_table")
+  relatedId    String?   @map("related_id")
+  isRead       Boolean   @default(false) @map("is_read")
+  readAt       DateTime? @map("read_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   // Relations
   user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -742,14 +742,14 @@ model Notification {
 
 model ActivityLog {
   id           String   @id @default(cuid())
-  userId       String
+  userId       String    @map("user_id")
   action       String
-  resourceType String?
-  resourceId   String?
-  metadata     Json?    @db.Json
-  ipAddress    String?
-  userAgent    String?
-  createdAt    DateTime @default(now())
+  resourceType String?   @map("resource_type")
+  resourceId   String?   @map("resource_id")
+  metadata     Json?    @db.Json @map("metadata")
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   // Relations
   user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -760,15 +760,15 @@ model ActivityLog {
 
 model DataExportLog {
   id           String    @id @default(cuid())
-  userId       String
-  exportType   String
-  filePath     String?
-  fileSize     BigInt?
-  filters      Json?     @db.Json
-  status       String    @default("processing")
-  errorMessage String?
-  createdAt    DateTime  @default(now())
-  completedAt  DateTime?
+  userId       String    @map("user_id")
+  exportType   String    @map("export_type")
+  filePath     String?   @map("file_path")
+  fileSize     BigInt?   @map("file_size")
+  filters      Json?     @db.Json @map("filters")
+  status       String    @default("processing") @map("status")
+  errorMessage String?   @map("error_message")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  completedAt  DateTime? @map("completed_at")
 
   // Relations
   user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -780,13 +780,13 @@ model DataExportLog {
 model ReportTemplate {
   id             String   @id @default(cuid())
   name           String
-  description    String?
-  templateType   String
-  templateConfig Json     @db.Json
-  isSystem       Boolean  @default(false)
-  createdBy      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  description    String?   @map("description")
+  templateType   String    @map("template_type")
+  templateConfig Json     @db.Json @map("template_config")
+  isSystem       Boolean  @default(false) @map("is_system")
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   // Relations
   creator          Profile?          @relation(fields: [createdBy], references: [id], onDelete: SetNull)
@@ -798,15 +798,15 @@ model ReportTemplate {
 
 model ScheduledReport {
   id             String    @id @default(cuid())
-  templateId     String
-  userId         String
-  scheduleType   String
-  scheduleConfig Json      @db.Json
-  isActive       Boolean   @default(true)
-  lastRunAt      DateTime?
-  nextRunAt      DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  templateId     String    @map("template_id")
+  userId         String    @map("user_id")
+  scheduleType   String    @map("schedule_type")
+  scheduleConfig Json      @db.Json @map("schedule_config")
+  isActive       Boolean  @default(true) @map("is_active")
+  lastRunAt      DateTime? @map("last_run_at")
+  nextRunAt      DateTime? @map("next_run_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
   template ReportTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
@@ -820,14 +820,14 @@ model ScheduledReport {
 model AlertRule {
   id          String   @id @default(cuid())
   name        String
-  description String?
-  ruleType    String
-  conditions  Json     @db.Json
-  actions     Json     @db.Json
-  isActive    Boolean  @default(true)
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  description String?   @map("description")
+  ruleType    String    @map("rule_type")
+  conditions  Json     @db.Json @map("conditions")
+  actions     Json     @db.Json @map("actions")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdBy   String?   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
   creator   Profile?   @relation(fields: [createdBy], references: [id], onDelete: SetNull)
@@ -839,12 +839,12 @@ model AlertRule {
 
 model AlertLog {
   id           String   @id @default(cuid())
-  ruleId       String
-  triggeredAt  DateTime @default(now())
-  triggerData  Json?    @db.Json
-  actionsTaken Json?    @db.Json
-  status       String   @default("sent")
-  errorMessage String?
+  ruleId       String    @map("rule_id")
+  triggeredAt  DateTime @default(now()) @map("triggered_at")
+  triggerData  Json?    @db.Json @map("trigger_data")
+  actionsTaken Json?    @db.Json @map("actions_taken")
+  status       String   @default("sent") @map("status")
+  errorMessage String?   @map("error_message")
 
   // Relations
   rule AlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
@@ -855,13 +855,13 @@ model AlertLog {
 
 model SystemSetting {
   id           String   @id @default(cuid())
-  settingKey   String   @unique
-  settingValue Json     @db.Json
-  description  String?
-  isPublic     Boolean  @default(false)
-  updatedBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  settingKey   String   @unique @map("setting_key")
+  settingValue Json     @db.Json @map("setting_value")
+  description  String?   @map("description")
+  isPublic     Boolean  @default(false) @map("is_public")
+  updatedBy    String?   @map("updated_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
 }

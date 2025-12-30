@@ -66,15 +66,15 @@ export async function requireAuth(allowedRoles?: string[]) {
 }
 
 export async function loginUser(email: string, password: string) {
-  const user = await prisma.profiles.findUnique({
+  const user = await prisma.profile.findUnique({
     where: { email },
   })
 
-  if (!user || !user.hashed_password) {
+  if (!user || !user.hashedPassword) {
     throw new Error("Invalid email or password")
   }
 
-  const isValid = await verifyPassword(password, user.hashed_password)
+  const isValid = await verifyPassword(password, user.hashedPassword)
 
   if (!isValid) {
     throw new Error("Invalid email or password")
@@ -83,12 +83,17 @@ export async function loginUser(email: string, password: string) {
   const sessionUser: SessionUser = {
     id: user.id,
     email: user.email,
-    full_name: user.full_name,
+    full_name: user.fullName,
     role: user.role,
-    company_id: user.company_id,
+    company_id: user.companyId,
   }
 
   await createSession(sessionUser)
+
+  await prisma.profile.update({
+    where: { id: user.id },
+    data: { updatedAt: new Date() },
+  })
 
   return sessionUser
 }
@@ -100,7 +105,7 @@ export async function registerUser(data: {
   company_id: string
   role?: string
 }) {
-  const existing = await prisma.profiles.findUnique({
+  const existing = await prisma.profile.findUnique({
     where: { email: data.email },
   })
 
@@ -110,12 +115,12 @@ export async function registerUser(data: {
 
   const hashedPassword = await hashPassword(data.password)
 
-  const user = await prisma.profiles.create({
+  const user = await prisma.profile.create({
     data: {
       email: data.email,
-      hashed_password: hashedPassword,
-      full_name: data.full_name,
-      company_id: data.company_id,
+      hashedPassword: hashedPassword,
+      fullName: data.full_name,
+      companyId: data.company_id,
       role: data.role || "user",
     },
   })
@@ -123,9 +128,9 @@ export async function registerUser(data: {
   const sessionUser: SessionUser = {
     id: user.id,
     email: user.email,
-    full_name: user.full_name,
+    full_name: user.fullName,
     role: user.role,
-    company_id: user.company_id,
+    company_id: user.companyId,
   }
 
   await createSession(sessionUser)
